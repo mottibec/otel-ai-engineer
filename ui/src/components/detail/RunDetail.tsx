@@ -44,7 +44,7 @@ export function RunDetail({ runId }: RunDetailProps) {
 
   const handleResume = async () => {
     try {
-      await apiClient.resumeRun(runId);
+      await apiClient.resumeRun(runId, "");
       mutate(`/api/runs/${runId}`);
       mutate("/api/runs");
     } catch (error) {
@@ -164,7 +164,7 @@ export function RunDetail({ runId }: RunDetailProps) {
           value="conversation"
           className="flex-1 m-0 p-4 flex flex-col min-h-0"
         >
-          <Conversation events={events} runId={runId} runStatus={run.status} markMessageAsSent={markMessageAsSent} />
+          <Conversation events={events} runId={runId} markMessageAsSent={markMessageAsSent} />
         </TabsContent>
         <TabsContent
           value="tools"

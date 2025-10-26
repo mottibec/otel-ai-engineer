@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo, useCallback } from "react";
 import type { AgentEvent, MessageData } from "../../types/events";
 import { CodeBlock } from "../common/CodeBlock";
 import { JsonViewer } from "../common/JsonViewer";
@@ -14,17 +14,21 @@ import { useSWRConfig } from "swr";
 interface ConversationProps {
   events: AgentEvent[];
   runId: string;
-  runStatus: string;
   markMessageAsSent: (messageContent: string) => void;
 }
 
-export function Conversation({ events, runId, runStatus, markMessageAsSent }: ConversationProps) {
-  const messageEvents = events.filter((e) => e.type === "message");
+export function Conversation({ events, runId, markMessageAsSent }: ConversationProps) {
   const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { mutate } = useSWRConfig();
 
-  const handleSendMessage = async () => {
+  // Memoize filtered message events to prevent unnecessary rerenders
+  const messageEvents = useMemo(
+    () => events.filter((e) => e.type === "message"),
+    [events]
+  );
+
+  const handleSendMessage = useCallback(async () => {
     if (!message.trim() || isSubmitting) return;
     
     const messageContent = message.trim();
@@ -48,14 +52,75 @@ export function Conversation({ events, runId, runStatus, markMessageAsSent }: Co
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }, [message, isSubmitting, runId, markMessageAsSent, mutate]);
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
     }
-  };
+  }, [handleSendMessage]);
+
+  // Memoize ReactMarkdown components to prevent recreation on every render
+  const markdownComponents = useMemo(() => ({
+    code({ className, children, ...props }: any) {
+      const isInline = !className?.includes("language-");
+      const match = /language-(\w+)/.exec(className || "");
+      const language = match ? match[1] : "text";
+      const codeString = String(children).replace(/\n$/, "");
+      
+      return isInline ? (
+        <code
+          className="bg-muted px-1 py-0.5 rounded text-xs font-mono"
+          {...props}
+        >
+          {children}
+        </code>
+      ) : (
+        <CodeBlock code={codeString} language={language} />
+      );
+    },
+    p({ children }: any) {
+      return <p className="mb-2 last:mb-0">{children}</p>;
+    },
+    ul({ children }: any) {
+      return <ul className="list-disc list-inside mb-2">{children}</ul>;
+    },
+    ol({ children }: any) {
+      return <ol className="list-decimal list-inside mb-2">{children}</ol>;
+    },
+    li({ children }: any) {
+      return <li className="mb-1">{children}</li>;
+    },
+    h1({ children }: any) {
+      return <h1 className="text-lg font-bold mb-2">{children}</h1>;
+    },
+    h2({ children }: any) {
+      return <h2 className="text-base font-semibold mb-2">{children}</h2>;
+    },
+    h3({ children }: any) {
+      return <h3 className="text-sm font-semibold mb-1">{children}</h3>;
+    },
+    blockquote({ children }: any) {
+      return (
+        <blockquote className="border-l-4 border-primary/20 pl-4 italic text-muted-foreground">
+          {children}
+        </blockquote>
+      );
+    },
+    a({ children, href }: any) {
+      return (
+        <a
+          href={href}
+          className="text-primary hover:underline"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {children}
+        </a>
+      );
+    },
+  }), []);
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -94,67 +159,7 @@ export function Conversation({ events, runId, runStatus, markMessageAsSent }: Co
                 <div key={index}>
                   {block.type === "text" && block.text && (
                     <div className="text-sm text-foreground/90 prose prose-sm prose-neutral dark:prose-invert max-w-none">
-                      <ReactMarkdown
-                        components={{
-                          code({ className, children, ...props }: any) {
-                            const isInline = !className?.includes("language-");
-                            const match = /language-(\w+)/.exec(className || "");
-                            const language = match ? match[1] : "text";
-                            const codeString = String(children).replace(/\n$/, "");
-                            
-                            return isInline ? (
-                              <code
-                                className="bg-muted px-1 py-0.5 rounded text-xs font-mono"
-                                {...props}
-                              >
-                                {children}
-                              </code>
-                            ) : (
-                              <CodeBlock code={codeString} language={language} />
-                            );
-                          },
-                          p({ children }) {
-                            return <p className="mb-2 last:mb-0">{children}</p>;
-                          },
-                          ul({ children }) {
-                            return <ul className="list-disc list-inside mb-2">{children}</ul>;
-                          },
-                          ol({ children }) {
-                            return <ol className="list-decimal list-inside mb-2">{children}</ol>;
-                          },
-                          li({ children }) {
-                            return <li className="mb-1">{children}</li>;
-                          },
-                          h1({ children }) {
-                            return <h1 className="text-lg font-bold mb-2">{children}</h1>;
-                          },
-                          h2({ children }) {
-                            return <h2 className="text-base font-semibold mb-2">{children}</h2>;
-                          },
-                          h3({ children }) {
-                            return <h3 className="text-sm font-semibold mb-1">{children}</h3>;
-                          },
-                          blockquote({ children }) {
-                            return (
-                              <blockquote className="border-l-4 border-primary/20 pl-4 italic text-muted-foreground">
-                                {children}
-                              </blockquote>
-                            );
-                          },
-                          a({ children, href }) {
-                            return (
-                              <a
-                                href={href}
-                                className="text-primary hover:underline"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                {children}
-                              </a>
-                            );
-                          },
-                        }}
-                      >
+                      <ReactMarkdown components={markdownComponents}>
                         {block.text}
                       </ReactMarkdown>
                     </div>

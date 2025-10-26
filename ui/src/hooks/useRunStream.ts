@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import type { AgentEvent } from "../types/events";
 import { apiClient } from "../services/api";
 import { useWebSocket } from "./useWebSocket";
@@ -20,9 +20,11 @@ export function useRunStream(runId: string | null) {
   const fetchEvents = useCallback(async () => {
     if (!runId) return;
 
+    console.log('[useRunStream] Fetching events for runId:', runId);
     try {
       setLoading(true);
       const data = await apiClient.getEvents(runId);
+      console.log('[useRunStream] Fetched events:', data?.length || 0, 'events');
       // Deduplicate events by ID when setting them
       setEvents((prev) => {
         if (!prev || prev.length === 0) {
@@ -52,6 +54,36 @@ export function useRunStream(runId: string | null) {
       setLoading(false);
     }
   }, [runId]);
+
+  // Fetch events initially when runId changes
+  useEffect(() => {
+    if (runId) {
+      setLoading(true);
+      apiClient.getEvents(runId).then((data) => {
+        setEvents((prev) => {
+          if (!prev || prev.length === 0) {
+            (data || []).forEach((e) => seenEventIds.current.add(e.id));
+            return data || [];
+          }
+          const eventMap = new Map<string, AgentEvent>();
+          prev.forEach((e) => eventMap.set(e.id, e));
+          (data || []).forEach((e) => {
+            if (!eventMap.has(e.id) && !seenEventIds.current.has(e.id)) {
+              seenEventIds.current.add(e.id);
+            }
+            eventMap.set(e.id, e);
+          });
+          return Array.from(eventMap.values()).sort((a, b) => 
+            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+          );
+        });
+      }).catch((error) => {
+        console.error("Failed to fetch events:", error);
+      }).finally(() => {
+        setLoading(false);
+      });
+    }
+  }, [runId]); // Only depend on runId, not fetchEvents to avoid infinite loop
 
   // Handle new events from WebSocket
   const handleEvent = useCallback((event: AgentEvent) => {
@@ -91,12 +123,14 @@ export function useRunStream(runId: string | null) {
     }, 5000);
   }, []);
 
+  // Memoize WebSocket options to prevent recreating on every render
+  const wsOptions = useMemo(() => ({
+    onEvent: handleEvent,
+  }), [handleEvent]);
+
   // Connect to WebSocket
   const wsUrl = runId ? apiClient.getWebSocketUrl(runId) : null;
-  const { status } = useWebSocket(wsUrl, {
-    onEvent: handleEvent,
-    onConnect: fetchEvents,
-  });
+  const { status } = useWebSocket(wsUrl, wsOptions);
 
   return { events, loading, status, refetch: fetchEvents, markMessageAsSent };
 }

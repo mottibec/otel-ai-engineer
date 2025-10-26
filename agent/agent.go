@@ -132,10 +132,13 @@ func (a *Agent) RunWithFullConfig(ctx context.Context, prompt string, existingRu
 
 // runInternal is the core run method that all public run methods delegate to
 func (a *Agent) runInternal(ctx context.Context, prompt string, existingRunID string, history []anthropic.MessageParam, pendingMessages chan string) *RunResult {
-	// Start with history, then add the new prompt
+	// Start with history, then add the new prompt (if not empty)
 	messages := make([]anthropic.MessageParam, 0, len(history)+1)
 	messages = append(messages, history...)
-	messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)))
+	// Only add the prompt if it's not empty (empty prompt is used for resuming with existing history)
+	if prompt != "" {
+		messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)))
+	}
 
 	result := &RunResult{
 		Messages: messages,
@@ -522,4 +525,3 @@ func (a *Agent) GetRegistry() *tools.ToolRegistry {
 func (a *Agent) ListTools() []string {
 	return a.registry.ListTools()
 }
-

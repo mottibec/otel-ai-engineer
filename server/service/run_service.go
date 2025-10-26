@@ -187,7 +187,29 @@ func (s *RunService) ResumeRun(ctx context.Context, req ResumeRunRequest) (*stor
 		return nil, fmt.Errorf("agent not found: %s", agentID)
 	}
 
-	// Build history from events
+	// Create user message event and store it immediately
+	// This ensures it's in storage regardless of WebSocket filtering
+	messageData := events.MessageData{
+		Role: "user",
+		Content: []events.ContentBlock{
+			{
+				Type: "text",
+				Text: req.Message,
+			},
+		},
+	}
+
+	event, err := events.NewMessageEvent(req.RunID, run.AgentID, run.AgentName, messageData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create message event: %w", err)
+	}
+
+	// Store event
+	if err := s.storage.AddEvent(req.RunID, event); err != nil {
+		return nil, fmt.Errorf("failed to add event: %w", err)
+	}
+
+	// Build history from events (now includes the new user message)
 	history, err := s.buildHistoryFromEvents(req.RunID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build history: %w", err)
@@ -209,24 +231,20 @@ func (s *RunService) ResumeRun(ctx context.Context, req ResumeRunRequest) (*stor
 	// Track active run
 	s.activeRuns.Add(req.RunID, runCtx, cancel)
 
-	// Get active run for pending messages
-	activeRun, exists := s.activeRuns.Get(req.RunID)
-	if !exists {
-		return nil, fmt.Errorf("failed to track active run")
-	}
-
 	// Start agent in background with existing run ID
+	// Note: We already created and stored the user message event, so we don't send it through PendingMessage
+	// The agent will use the history (which includes the new message) to continue the conversation
 	go func() {
 		defer cancel()
 		defer s.activeRuns.Remove(req.RunID)
 
 		_, err := s.agentRegistry.RunAgent(runCtx, agent.RunnerConfig{
 			AgentID:         agentID,
-			Prompt:          req.Message,
+			Prompt:          "", // Empty prompt for resume - user message is in history
 			Client:          s.anthropicClient,
 			LogLevel:        s.logLevel,
 			EventEmitter:    s.eventBridge.GetEmitter(),
-			PendingMessages: activeRun.PendingMessage,
+			PendingMessages: nil, // Don't use pending messages - message is already in history
 			History:         history,
 			RunID:           req.RunID, // Use existing run ID
 		})
@@ -234,9 +252,6 @@ func (s *RunService) ResumeRun(ctx context.Context, req ResumeRunRequest) (*stor
 			log.Printf("Agent run failed: %v", err)
 		}
 	}()
-
-	// Wait briefly for agent to start
-	time.Sleep(100 * time.Millisecond)
 
 	// Get updated run
 	updatedRun, err := s.storage.GetRun(req.RunID)
