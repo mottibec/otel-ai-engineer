@@ -1,0 +1,91 @@
+FROM golang:1.24
+
+# Install build and development dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    ca-certificates \
+    tzdata \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Docker CLI (detect architecture)
+RUN ARCH=$(dpkg --print-architecture) \
+    && if [ "$ARCH" = "amd64" ]; then \
+        DOCKER_ARCH=x86_64; \
+    elif [ "$ARCH" = "arm64" ]; then \
+        DOCKER_ARCH=aarch64; \
+    else \
+        echo "Unsupported architecture: $ARCH" && exit 1; \
+    fi \
+    && curl -fsSL "https://download.docker.com/linux/static/stable/${DOCKER_ARCH}/docker-24.0.7.tgz" -o docker.tgz \
+    && tar -xzf docker.tgz --strip-components=1 -C /usr/local/bin docker/docker \
+    && rm docker.tgz
+
+# Install Air for hot reloading
+RUN go install github.com/air-verse/air@v1.52.3
+
+# Install Delve for debugging (optional)
+RUN go install github.com/go-delve/delve/cmd/dlv@latest
+
+# Set working directory
+WORKDIR /app
+
+# Copy go mod files first for better layer caching
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Expose ports
+# 8080 - HTTP API/UI server
+# 2345 - Delve debugger (optional)
+EXPOSE 8080 2345
+
+# Set environment variables for development
+ENV CGO_ENABLED=1
+
+# Create .air.toml configuration file for hot reloading
+RUN echo '[build]\n\
+  cmd = "go build -o ./tmp/main ."\n\
+  bin = "tmp/main"\n\
+  full_bin = "./tmp/main ui"\n\
+  include_ext = ["go"]\n\
+  exclude_dir = ["tmp", "vendor", "ui", "node_modules", "dist"]\n\
+  include_dir = [".", "agent", "server", "tools", "config"]\n\
+  exclude_file = []\n\
+  exclude_regex = ["_test.go"]\n\
+  exclude_unchanged = false\n\
+  follow_symlink = false\n\
+  log = "build-errors.log"\n\
+  poll = false\n\
+  poll_interval = 0\n\
+  delay = 1000\n\
+  stop_on_error = false\n\
+  send_interrupt = false\n\
+  kill_delay = "0s"\n\
+  rerun = false\n\
+  rerun_delay = 500\n\
+\n\
+[log]\n\
+  main_only = false\n\
+  time = false\n\
+  silent = false\n\
+\n\
+[color]\n\
+  main = "magenta"\n\
+  watcher = "cyan"\n\
+  build = "yellow"\n\
+  runner = "green"\n\
+\n\
+[misc]\n\
+  clean_on_exit = false\n\
+\n\
+[screen]\n\
+  clear_on_rebuild = false\n\
+  keep_scroll = true' > /app/.air.toml
+
+# Default command uses Air for hot reloading
+CMD ["air", "-c", ".air.toml"]

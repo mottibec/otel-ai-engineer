@@ -1,0 +1,99 @@
+services:
+  # Go backend with hot reloading (development mode)
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: otel-ai-engineer-backend
+    ports:
+      - "8080:8080" # HTTP API/UI server
+      - "2345:2345" # Delve debugger (optional)
+    volumes:
+      # Mount source code for hot reloading
+      - ./main.go:/app/main.go
+      - ./agent:/app/agent
+      - ./server:/app/server
+      - ./tools:/app/tools
+      - ./otelclient:/app/otelclient
+      - ./config:/app/config
+      - ./go.mod:/app/go.mod
+      - ./go.sum:/app/go.sum
+      - ./.env:/app/.env
+      # Persist go build cache for faster rebuilds
+      - go-build-cache:/root/.cache/go-build
+      - go-mod-cache:/go/pkg/mod
+      # Mount Docker socket to enable Docker operations from within container
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Persist database between runs
+      - ./data:/app/data
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - LAWRENCE_API_URL=http://lawrence:8080
+      - LOG_LEVEL=debug
+      - CGO_ENABLED=1
+      - TZ=UTC
+      - DB_PATH=/app/data/otel-ai-engineer.db
+    depends_on:
+      - lawrence
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - otel-network
+
+  # Development UI server with hot-reloading
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    container_name: otel-ai-engineer-ui
+    ports:
+      - "5173:5173" # Vite dev server
+    volumes:
+      - ./ui:/app
+      - /app/node_modules # Prevent overwriting node_modules
+    environment:
+      - VITE_BACKEND_URL=http://backend:8080
+    depends_on:
+      - backend
+    networks:
+      - otel-network
+
+  lawrence:
+    build:
+      context: ../lawrence-oss
+      dockerfile: Dockerfile
+    container_name: lawrence-oss
+    ports:
+      - "8081:8080" # Lawrence REST API
+      - "4320:4320" # OpAMP server
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+    volumes:
+      - lawrence-data:/data
+    environment:
+      - LOG_LEVEL=info
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - otel-network
+
+volumes:
+  go-build-cache:
+    driver: local
+  go-mod-cache:
+    driver: local
+  lawrence-data:
+    driver: local
+
+networks:
+  otel-network:
+    driver: bridge
