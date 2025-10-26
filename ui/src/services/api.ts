@@ -1,5 +1,6 @@
 import type { Run, Agent, StartRunRequest } from "../types/models";
 import type { AgentEvent } from "../types/events";
+import type { Trace } from "../types/trace";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
 
@@ -55,6 +56,14 @@ export class ApiClient {
     }
     const data = await response.json();
     return data.count;
+  }
+
+  async getRunTrace(runId: string): Promise<Trace> {
+    const response = await fetch(`${this.baseUrl}/runs/${runId}/trace`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch trace: ${response.statusText}`);
+    }
+    return response.json();
   }
 
   getWebSocketUrl(runId?: string): string {

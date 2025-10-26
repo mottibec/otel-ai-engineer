@@ -8,6 +8,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/mottibechhofer/otel-ai-engineer/agent/events"
 	"github.com/mottibechhofer/otel-ai-engineer/config"
+	"github.com/mottibechhofer/otel-ai-engineer/server/storage"
 )
 
 // AgentInfo contains metadata about an agent type
@@ -137,7 +138,8 @@ type RunnerConfig struct {
 	EventEmitter    events.EventEmitter
 	PendingMessages chan string
 	History         []anthropic.MessageParam
-	RunID           string // Optional: existing run ID for resuming
+	RunID           string          // Optional: existing run ID for resuming
+	Storage         storage.Storage // Optional: storage for handoff tracking
 }
 
 // RunAgent is a helper function to create and run an agent in one call
@@ -145,6 +147,21 @@ func (r *Registry) RunAgent(ctx context.Context, cfg RunnerConfig) (*RunResult, 
 	agent, err := r.Create(cfg.AgentID, cfg.Client, cfg.LogLevel, cfg.EventEmitter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agent: %w", err)
+	}
+
+	// Enable handoff if storage is provided
+	if cfg.Storage != nil && cfg.RunID != "" {
+		handoffCtx := &HandoffContext{
+			ParentRunID:   cfg.RunID,
+			ParentAgentID: cfg.AgentID,
+			Registry:      r,
+			Client:        cfg.Client,
+			LogLevel:      cfg.LogLevel,
+			EventEmitter:  cfg.EventEmitter,
+			Storage:       cfg.Storage,
+		}
+		handoffTool := CreateHandoffTool(handoffCtx)
+		agent.registry.RegisterTool(handoffTool)
 	}
 
 	// If RunID is provided (resuming) or we have both history and pending messages,

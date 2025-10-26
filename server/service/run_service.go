@@ -127,6 +127,7 @@ func (s *RunService) CreateRun(ctx context.Context, req CreateRunRequest) (*Crea
 			EventEmitter:    s.eventBridge.GetEmitter(),
 			PendingMessages: activeRun.PendingMessage,
 			History:         history,
+			Storage:         s.storage,
 		})
 		if err != nil {
 			log.Printf("Agent run failed: %v", err)
@@ -247,6 +248,7 @@ func (s *RunService) ResumeRun(ctx context.Context, req ResumeRunRequest) (*stor
 			PendingMessages: nil, // Don't use pending messages - message is already in history
 			History:         history,
 			RunID:           req.RunID, // Use existing run ID
+			Storage:         s.storage,
 		})
 		if err != nil {
 			log.Printf("Agent run failed: %v", err)

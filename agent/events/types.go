@@ -11,16 +11,18 @@ import (
 type EventType string
 
 const (
-	EventRunStart    EventType = "run_start"
-	EventRunEnd      EventType = "run_end"
-	EventIteration   EventType = "iteration"
-	EventMessage     EventType = "message"
-	EventToolCall    EventType = "tool_call"
-	EventToolResult  EventType = "tool_result"
-	EventFileChange  EventType = "file_change"
-	EventError       EventType = "error"
-	EventAPIRequest  EventType = "api_request"
-	EventAPIResponse EventType = "api_response"
+	EventRunStart            EventType = "run_start"
+	EventRunEnd              EventType = "run_end"
+	EventIteration           EventType = "iteration"
+	EventMessage             EventType = "message"
+	EventToolCall            EventType = "tool_call"
+	EventToolResult          EventType = "tool_result"
+	EventFileChange          EventType = "file_change"
+	EventError               EventType = "error"
+	EventAPIRequest          EventType = "api_request"
+	EventAPIResponse         EventType = "api_response"
+	EventAgentHandoff        EventType = "agent_handoff"
+	EventAgentHandoffComplete EventType = "agent_handoff_complete"
 )
 
 // AgentEvent represents a single event in the agent's execution
@@ -138,6 +140,27 @@ type APIResponseData struct {
 	Model        string     `json:"model"`
 	Usage        *UsageInfo `json:"usage"`
 	ContentCount int        `json:"content_count"`
+}
+
+// HandoffData contains data for handoff initiation events
+type HandoffData struct {
+	ParentRunID     string `json:"parent_run_id"`
+	SubRunID        string `json:"sub_run_id"`
+	FromAgentID     string `json:"from_agent_id"`
+	ToAgentID       string `json:"to_agent_id"`
+	TaskDescription string `json:"task_description"`
+}
+
+// HandoffCompleteData contains data for handoff completion events
+type HandoffCompleteData struct {
+	ParentRunID string `json:"parent_run_id"`
+	SubRunID    string `json:"sub_run_id"`
+	FromAgentID string `json:"from_agent_id"`
+	ToAgentID   string `json:"to_agent_id"`
+	Success     bool   `json:"success"`
+	Summary     string `json:"summary"`
+	Error       string `json:"error,omitempty"`
+	Duration    string `json:"duration"`
 }
 
 // Helper functions to create events with typed data
@@ -342,4 +365,40 @@ func MessageDataFromAnthropic(msg *anthropic.Message) MessageData {
 // generateEventID generates a unique event ID
 func generateEventID() string {
 	return time.Now().Format("20060102150405.000000")
+}
+
+// NewAgentHandoffEvent creates an agent handoff event
+func NewAgentHandoffEvent(runID, agentID, agentName string, data HandoffData) (*AgentEvent, error) {
+	dataJSON, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+
+	return &AgentEvent{
+		ID:        generateEventID(),
+		Timestamp: time.Now(),
+		AgentID:   agentID,
+		AgentName: agentName,
+		RunID:     runID,
+		Type:      EventAgentHandoff,
+		Data:      dataJSON,
+	}, nil
+}
+
+// NewAgentHandoffCompleteEvent creates an agent handoff complete event
+func NewAgentHandoffCompleteEvent(runID, agentID, agentName string, data HandoffCompleteData) (*AgentEvent, error) {
+	dataJSON, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+
+	return &AgentEvent{
+		ID:        generateEventID(),
+		Timestamp: time.Now(),
+		AgentID:   agentID,
+		AgentName: agentName,
+		RunID:     runID,
+		Type:      EventAgentHandoffComplete,
+		Data:      dataJSON,
+	}, nil
 }

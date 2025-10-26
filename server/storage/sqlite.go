@@ -105,6 +105,44 @@ func (s *SQLiteStorage) initSchema() error {
 		}
 	}
 
+	// Run migrations to add handoff support
+	if err := s.migrateSchema(); err != nil {
+		return fmt.Errorf("failed to migrate schema: %w", err)
+	}
+
+	return nil
+}
+
+// migrateSchema handles schema migrations
+func (s *SQLiteStorage) migrateSchema() error {
+	// Check if handoff columns exist
+	var columnExists bool
+	err := s.db.QueryRow(`
+		SELECT EXISTS (
+			SELECT 1 FROM pragma_table_info('runs') WHERE name = 'parent_run_id'
+		)
+	`).Scan(&columnExists)
+
+	if err != nil {
+		return fmt.Errorf("failed to check column existence: %w", err)
+	}
+
+	if !columnExists {
+		// Add handoff columns
+		migrations := []string{
+			"ALTER TABLE runs ADD COLUMN parent_run_id TEXT;",
+			"ALTER TABLE runs ADD COLUMN sub_run_ids TEXT;",
+			"ALTER TABLE runs ADD COLUMN is_handoff BOOLEAN DEFAULT 0;",
+			"CREATE INDEX IF NOT EXISTS idx_runs_parent_run_id ON runs(parent_run_id);",
+		}
+
+		for _, migration := range migrations {
+			if _, err := s.db.Exec(migration); err != nil {
+				return fmt.Errorf("failed to run migration: %w", err)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -138,13 +176,29 @@ func (s *SQLiteStorage) CreateRun(run *Run) error {
 		endTime.Valid = true
 	}
 
+	// Serialize handoff fields
+	var parentRunID sql.NullString
+	if run.ParentRunID != nil && *run.ParentRunID != "" {
+		parentRunID.String = *run.ParentRunID
+		parentRunID.Valid = true
+	}
+
+	var subRunIDsJSON sql.NullString
+	if len(run.SubRunIDs) > 0 {
+		subRunIDsJSONBytes, err := json.Marshal(run.SubRunIDs)
+		if err == nil {
+			subRunIDsJSON.String = string(subRunIDsJSONBytes)
+			subRunIDsJSON.Valid = true
+		}
+	}
+
 	_, err = s.db.Exec(
 		`INSERT INTO runs (id, agent_id, agent_name, status, prompt, model, start_time, end_time, duration, 
-			total_iterations, total_tool_calls, total_tokens, error) 
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			total_iterations, total_tool_calls, total_tokens, error, parent_run_id, sub_run_ids, is_handoff) 
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		run.ID, run.AgentID, run.AgentName, run.Status, run.Prompt, run.Model, 
 		run.StartTime, endTime, duration, run.TotalIterations, run.TotalToolCalls, 
-		tokenUsageJSON, run.Error)
+		tokenUsageJSON, run.Error, parentRunID, subRunIDsJSON, run.IsHandoff)
 
 	if err != nil {
 		return fmt.Errorf("failed to insert run: %w", err)
@@ -160,7 +214,7 @@ func (s *SQLiteStorage) GetRun(runID string) (*Run, error) {
 
 	row := s.db.QueryRow(
 		`SELECT id, agent_id, agent_name, status, prompt, model, start_time, end_time, duration,
-			total_iterations, total_tool_calls, total_tokens, error
+			total_iterations, total_tool_calls, total_tokens, error, parent_run_id, sub_run_ids, is_handoff
 		 FROM runs WHERE id = ?`,
 		runID)
 
@@ -168,11 +222,13 @@ func (s *SQLiteStorage) GetRun(runID string) (*Run, error) {
 	var endTime sql.NullTime
 	var duration sql.NullString
 	var tokenUsageJSON string
+	var parentRunID sql.NullString
+	var subRunIDsJSON sql.NullString
 
 	err := row.Scan(
 		&run.ID, &run.AgentID, &run.AgentName, &run.Status, &run.Prompt, &run.Model,
 		&run.StartTime, &endTime, &duration, &run.TotalIterations, &run.TotalToolCalls,
-		&tokenUsageJSON, &run.Error)
+		&tokenUsageJSON, &run.Error, &parentRunID, &subRunIDsJSON, &run.IsHandoff)
 
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("run with ID %s not found", runID)
@@ -190,6 +246,18 @@ func (s *SQLiteStorage) GetRun(runID string) (*Run, error) {
 
 	if err := json.Unmarshal([]byte(tokenUsageJSON), &run.TotalTokens); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal token usage: %w", err)
+	}
+
+	// Unmarshal parent_run_id
+	if parentRunID.Valid && parentRunID.String != "" {
+		run.ParentRunID = &parentRunID.String
+	}
+
+	// Unmarshal sub_run_ids
+	if subRunIDsJSON.Valid && subRunIDsJSON.String != "" {
+		if err := json.Unmarshal([]byte(subRunIDsJSON.String), &run.SubRunIDs); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal sub run IDs: %w", err)
+		}
 	}
 
 	return &run, nil
@@ -329,6 +397,21 @@ func (s *SQLiteStorage) UpdateRun(runID string, update *RunUpdate) error {
 	if update.Error != nil {
 		updates = append(updates, "error = ?")
 		args = append(args, *update.Error)
+	}
+	if update.ParentRunID != nil {
+		updates = append(updates, "parent_run_id = ?")
+		args = append(args, *update.ParentRunID)
+	}
+	if update.SubRunIDs != nil {
+		subRunIDsJSON, err := json.Marshal(*update.SubRunIDs)
+		if err == nil {
+			updates = append(updates, "sub_run_ids = ?")
+			args = append(args, string(subRunIDsJSON))
+		}
+	}
+	if update.IsHandoff != nil {
+		updates = append(updates, "is_handoff = ?")
+		args = append(args, *update.IsHandoff)
 	}
 
 	if len(updates) == 0 {
@@ -473,6 +556,130 @@ func (s *SQLiteStorage) GetEventCount(runID string) (int, error) {
 	}
 
 	return count, nil
+}
+
+// GetSubRuns returns all sub-runs for a parent run
+func (s *SQLiteStorage) GetSubRuns(parentRunID string) ([]*Run, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	query := `SELECT id, agent_id, agent_name, status, prompt, model, start_time, end_time, duration,
+			  total_iterations, total_tool_calls, total_tokens, error, parent_run_id, sub_run_ids, is_handoff
+			  FROM runs WHERE parent_run_id = ? ORDER BY start_time ASC`
+
+	rows, err := s.db.Query(query, parentRunID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query sub-runs: %w", err)
+	}
+	defer rows.Close()
+
+	runs := []*Run{}
+	for rows.Next() {
+		var run Run
+		var endTime sql.NullTime
+		var duration sql.NullString
+		var tokenUsageJSON string
+		var parentRunID sql.NullString
+		var subRunIDsJSON sql.NullString
+
+		err := rows.Scan(
+			&run.ID, &run.AgentID, &run.AgentName, &run.Status, &run.Prompt, &run.Model,
+			&run.StartTime, &endTime, &duration, &run.TotalIterations, &run.TotalToolCalls,
+			&tokenUsageJSON, &run.Error, &parentRunID, &subRunIDsJSON, &run.IsHandoff)
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan run: %w", err)
+		}
+
+		if endTime.Valid {
+			run.EndTime = &endTime.Time
+		}
+		if duration.Valid {
+			run.Duration = duration.String
+		}
+
+		if err := json.Unmarshal([]byte(tokenUsageJSON), &run.TotalTokens); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal token usage: %w", err)
+		}
+
+		// Unmarshal parent_run_id
+		if parentRunID.Valid && parentRunID.String != "" {
+			run.ParentRunID = &parentRunID.String
+		}
+
+		// Unmarshal sub_run_ids
+		if subRunIDsJSON.Valid && subRunIDsJSON.String != "" {
+			if err := json.Unmarshal([]byte(subRunIDsJSON.String), &run.SubRunIDs); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal sub run IDs: %w", err)
+			}
+		}
+
+		runs = append(runs, &run)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate runs: %w", err)
+	}
+
+	return runs, nil
+}
+
+// GetParentRun returns the parent run for a sub-run
+func (s *SQLiteStorage) GetParentRun(subRunID string) (*Run, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	row := s.db.QueryRow(
+		`SELECT id, agent_id, agent_name, status, prompt, model, start_time, end_time, duration,
+			total_iterations, total_tool_calls, total_tokens, error, parent_run_id, sub_run_ids, is_handoff
+		 FROM runs WHERE id = (
+			 SELECT parent_run_id FROM runs WHERE id = ?
+		 )`,
+		subRunID)
+
+	var run Run
+	var endTime sql.NullTime
+	var duration sql.NullString
+	var tokenUsageJSON string
+	var parentRunID sql.NullString
+	var subRunIDsJSON sql.NullString
+
+	err := row.Scan(
+		&run.ID, &run.AgentID, &run.AgentName, &run.Status, &run.Prompt, &run.Model,
+		&run.StartTime, &endTime, &duration, &run.TotalIterations, &run.TotalToolCalls,
+		&tokenUsageJSON, &run.Error, &parentRunID, &subRunIDsJSON, &run.IsHandoff)
+
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("parent run not found for sub-run %s", subRunID)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan run: %w", err)
+	}
+
+	if endTime.Valid {
+		run.EndTime = &endTime.Time
+	}
+	if duration.Valid {
+		run.Duration = duration.String
+	}
+
+	if err := json.Unmarshal([]byte(tokenUsageJSON), &run.TotalTokens); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal token usage: %w", err)
+	}
+
+	// Unmarshal parent_run_id
+	if parentRunID.Valid && parentRunID.String != "" {
+		run.ParentRunID = &parentRunID.String
+	}
+
+	// Unmarshal sub_run_ids
+	if subRunIDsJSON.Valid && subRunIDsJSON.String != "" {
+		if err := json.Unmarshal([]byte(subRunIDsJSON.String), &run.SubRunIDs); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal sub run IDs: %w", err)
+		}
+	}
+
+	return &run, nil
 }
 
 // Subscribe creates a subscription to events for a specific run

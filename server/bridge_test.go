@@ -122,6 +122,35 @@ func (m *MockStorage) SubscribeAll() (<-chan *events.AgentEvent, func()) {
 	return ch, func() { close(ch) }
 }
 
+func (m *MockStorage) GetSubRuns(parentRunID string) ([]*storage.Run, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	subRuns := []*storage.Run{}
+	for _, run := range m.runs {
+		if run.ParentRunID != nil && *run.ParentRunID == parentRunID {
+			subRuns = append(subRuns, run)
+		}
+	}
+	return subRuns, nil
+}
+
+func (m *MockStorage) GetParentRun(subRunID string) (*storage.Run, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	subRun, exists := m.runs[subRunID]
+	if !exists {
+		return nil, fmt.Errorf("sub-run not found: %s", subRunID)
+	}
+	if subRun.ParentRunID == nil {
+		return nil, fmt.Errorf("no parent run for sub-run %s", subRunID)
+	}
+	parentRun, exists := m.runs[*subRun.ParentRunID]
+	if !exists {
+		return nil, fmt.Errorf("parent run not found: %s", *subRun.ParentRunID)
+	}
+	return parentRun, nil
+}
+
 func (m *MockStorage) Close() error {
 	return nil
 }

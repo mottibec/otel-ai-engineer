@@ -15,6 +15,10 @@ type Storage interface {
 	UpdateRun(runID string, update *RunUpdate) error
 	DeleteRun(runID string) error
 
+	// Handoff queries
+	GetSubRuns(parentRunID string) ([]*Run, error)
+	GetParentRun(subRunID string) (*Run, error)
+
 	// Event management
 	AddEvent(runID string, event *events.AgentEvent) error
 	GetEvents(runID string, after *time.Time) ([]*events.AgentEvent, error)

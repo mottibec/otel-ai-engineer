@@ -109,21 +109,20 @@ export function ToolExecutions({ events }: ToolExecutionsProps) {
             {isExpanded && (
               <div className="border-t border-border/50 px-3 py-2 bg-muted/30 space-y-2.5">
                 <div>
-                  <h4 className="text-xs font-medium mb-1">Input</h4>
-                  <JsonViewer data={callData.input} />
+                  <JsonViewer data={callData.input} title="Input" />
                 </div>
 
                 {resultData && (
                   <div>
-                    <h4 className="text-xs font-medium mb-1">
-                      {isError ? "Error" : "Result"}
-                    </h4>
                     {isError ? (
-                      <div className="border border-destructive/20 bg-destructive/10 rounded px-2 py-1.5 text-xs text-destructive">
-                        {resultData.error}
-                      </div>
+                      <>
+                        <h4 className="text-xs font-medium mb-1">Error</h4>
+                        <div className="border border-destructive/20 bg-destructive/10 rounded px-2 py-1.5 text-xs text-destructive">
+                          {resultData.error}
+                        </div>
+                      </>
                     ) : (
-                      <JsonViewer data={resultData.result} />
+                      <JsonViewer data={resultData.result} title="Result" />
                     )}
                   </div>
                 )}

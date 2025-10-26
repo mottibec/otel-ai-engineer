@@ -36,8 +36,9 @@ type Server struct {
 	eventBridge      *EventBridge
 	activeRuns       map[string]*ActiveRun
 	activeRunsMu     sync.RWMutex
-	runService       *service.RunService       // Service layer for business logic
+	runService       *service.RunService           // Service layer for business logic
 	activeRunManager *service.ActiveRunManagerImpl // Manager for active runs
+	traceService     *service.TraceService         // Service for trace computation
 }
 
 // Config holds server configuration
@@ -72,6 +73,9 @@ func New(cfg Config) *Server {
 		ActiveRuns:      activeRunManager,
 	})
 
+	// Create trace service
+	traceService := service.NewTraceService(cfg.Storage)
+
 	s := &Server{
 		storage:          cfg.Storage,
 		hub:              NewWebSocketHub(),
@@ -84,6 +88,7 @@ func New(cfg Config) *Server {
 		activeRuns:       make(map[string]*ActiveRun),
 		runService:       runService,
 		activeRunManager: activeRunManager,
+		traceService:     traceService,
 	}
 
 	s.setupRoutes()
@@ -107,6 +112,7 @@ func (s *Server) setupRoutes() {
 	api.HandleFunc("/runs/{runId}", s.HandleGetRun).Methods("GET")
 	api.HandleFunc("/runs/{runId}/events", s.HandleGetEvents).Methods("GET")
 	api.HandleFunc("/runs/{runId}/events/count", s.HandleGetEventCount).Methods("GET")
+	api.HandleFunc("/runs/{runId}/trace", s.HandleGetTrace).Methods("GET")
 
 	// Run control endpoints
 	api.HandleFunc("/runs/{runId}/stop", s.HandleStopRun).Methods("POST")

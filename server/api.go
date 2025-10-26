@@ -123,6 +123,22 @@ func (s *Server) HandleGetEventCount(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]int{"count": count})
 }
 
+// HandleGetTrace handles GET /api/runs/:runId/trace
+func (s *Server) HandleGetTrace(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	runID := vars["runId"]
+
+	// Compute trace from events
+	trace, err := s.traceService.ComputeTrace(runID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(trace)
+}
+
 // HandleHealth handles GET /api/health
 func (s *Server) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -317,4 +333,3 @@ func (s *Server) HandleAddInstruction(w http.ResponseWriter, r *http.Request) {
 		"instruction": req.Instruction,
 	})
 }
-

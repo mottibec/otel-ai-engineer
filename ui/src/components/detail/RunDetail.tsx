@@ -5,11 +5,12 @@ import { Timeline } from "./Timeline";
 import { Conversation } from "./Conversation";
 import { ToolExecutions } from "./ToolExecutions";
 import { MetricsPanel } from "./MetricsPanel";
+import { TraceView } from "./TraceView";
 import { formatDate } from "../../utils/formatters";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MessageSquare, Wrench, Clock, Square, Pause, Play } from "lucide-react";
+import { MessageSquare, Wrench, Clock, Square, Pause, Play, Activity } from "lucide-react";
 import { apiClient } from "../../services/api";
 import { useSWRConfig } from "swr";
 
@@ -158,6 +159,13 @@ export function RunDetail({ runId }: RunDetailProps) {
             <Clock className="h-3 w-3 mr-1.5" />
             Timeline ({events.length})
           </TabsTrigger>
+          <TabsTrigger
+            value="traces"
+            className="rounded-none text-xs h-8 data-[state=active]:border-b-2 data-[state=active]:border-primary"
+          >
+            <Activity className="h-3 w-3 mr-1.5" />
+            Traces
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent
@@ -177,6 +185,12 @@ export function RunDetail({ runId }: RunDetailProps) {
           className="flex-1 m-0 p-4 overflow-y-auto"
         >
           <Timeline events={events} />
+        </TabsContent>
+        <TabsContent
+          value="traces"
+          className="flex-1 m-0 p-4 overflow-y-auto"
+        >
+          <TraceView runId={runId} />
         </TabsContent>
       </Tabs>
     </div>
