@@ -20,7 +20,7 @@ interface RunDetailProps {
 
 export function RunDetail({ runId }: RunDetailProps) {
   const { run, loading } = useRun(runId);
-  const { events, status, markMessageAsSent } = useRunStream(runId);
+  const { events, status } = useRunStream(runId, run?.status);
   const { mutate } = useSWRConfig();
 
   const handleStop = async () => {
@@ -172,7 +172,10 @@ export function RunDetail({ runId }: RunDetailProps) {
           value="conversation"
           className="flex-1 m-0 p-4 flex flex-col min-h-0"
         >
-          <Conversation events={events} runId={runId} markMessageAsSent={markMessageAsSent} />
+          <Conversation
+            events={events}
+            runId={runId}
+          />
         </TabsContent>
         <TabsContent
           value="tools"

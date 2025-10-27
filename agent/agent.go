@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -258,9 +259,12 @@ func (a *Agent) runInternal(ctx context.Context, prompt string, existingRunID st
 			a.logger.Error("API call failed: %v", err)
 			result.Error = fmt.Errorf("API call failed: %w", err)
 
+			// Parse the error for better display
+			errorMessage := a.parseAPIError(err)
+
 			// Emit error event
 			if evt, err := events.NewErrorEvent(runID, a.name, a.name, events.ErrorData{
-				Message: fmt.Sprintf("API call failed: %v", err),
+				Message: errorMessage,
 			}); err == nil {
 				a.eventEmitter.Emit(evt)
 			}
@@ -504,6 +508,33 @@ func (a *Agent) executeTools(message *anthropic.Message, runID string) ([]anthro
 	}
 
 	return []anthropic.MessageParam{anthropic.NewUserMessage(toolResultBlocks...)}, nil
+}
+
+// parseAPIError parses Anthropic API errors to extract meaningful information
+func (a *Agent) parseAPIError(err error) string {
+	errStr := err.Error()
+	
+	// Check if this is a structured error (likely from Anthropic SDK)
+	// The error format from the SDK often includes detailed information
+	
+	// Rate limit errors
+	if strings.Contains(errStr, "429") || strings.Contains(errStr, "rate_limit") {
+		return errStr
+	}
+	
+	// Authentication errors
+	if strings.Contains(errStr, "401") || strings.Contains(errStr, "authentication") {
+		return "API authentication failed. Please check your API key."
+	}
+	
+	// API error format from Anthropic SDK
+	if strings.Contains(errStr, "API call failed:") {
+		// Return the full error as it contains structured information
+		return errStr
+	}
+	
+	// Default: return the full error
+	return fmt.Sprintf("API call failed: %v", err)
 }
 
 // GetName returns the agent's name

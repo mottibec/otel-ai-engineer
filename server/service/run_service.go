@@ -365,7 +365,13 @@ func (s *RunService) normalizeAgentID(agentID string) string {
 		return "otel"
 	case "CodingAgent", "Coding Agent":
 		return "coding"
+	case "ObservabilityAgent", "Observability Agent":
+		return "observability"
 	default:
+		// Try direct lookup first
+		if _, exists := s.agentRegistry.Get(agentID); exists {
+			return agentID
+		}
 		return agentID
 	}
 }

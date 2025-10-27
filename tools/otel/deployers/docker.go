@@ -70,6 +70,8 @@ func (d *DockerDeployer) Deploy(config DeploymentConfig) (*DeploymentResult, err
 		"-d",
 		"--name", containerName,
 		"--network", network,
+		"-p", "4317", // OTLP gRPC
+		"-p", "4318", // OTLP HTTP
 		"-v", fmt.Sprintf("%s:/etc/otelcol/config.yaml:ro", configPath),
 		"-e", fmt.Sprintf("OTEL_OPAMP_SERVER=%s", lawrenceURL),
 		"-e", fmt.Sprintf("OTEL_AGENT_ID=%s", collectorID),
