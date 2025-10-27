@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"os"
@@ -10,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/mottibechhofer/otel-ai-engineer/agent"
 	"github.com/mottibechhofer/otel-ai-engineer/agent/events"
 	"github.com/mottibechhofer/otel-ai-engineer/config"
@@ -24,12 +24,10 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Create Anthropic client (API key from environment or config)
-	os.Setenv("ANTHROPIC_API_KEY", cfg.AnthropicAPIKey)
-	client := anthropic.NewClient()
-
-	ctx := context.Background()
-	_ = ctx // Keep context for potential future use
+	// Create Anthropic client with API key from config
+	client := anthropic.NewClient(
+		option.WithAPIKey(cfg.AnthropicAPIKey),
+	)
 
 	// Parse port from command line arguments
 	port := 8080
