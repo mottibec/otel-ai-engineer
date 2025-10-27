@@ -6,7 +6,13 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/mottibechhofer/otel-ai-engineer/tools"
+	dc "github.com/mottibechhofer/otel-ai-engineer/tools/dockerclient"
 	"github.com/mottibechhofer/otel-ai-engineer/tools/grafana/deployers"
+)
+
+var (
+	// Shared Docker client instance
+	sharedDockerClient *dc.Client
 )
 
 // DeployGrafanaInput represents the input for deploying Grafana
@@ -18,8 +24,14 @@ type DeployGrafanaInput struct {
 	Parameters    map[string]interface{} `json:"parameters"`
 }
 
+// SetDockerClient sets the shared Docker client for Grafana tools
+func SetDockerClient(client *dc.Client) {
+	sharedDockerClient = client
+}
+
 // GetDeployGrafanaTool creates a tool for deploying Grafana
-func GetDeployGrafanaTool() tools.Tool {
+func GetDeployGrafanaTool(dockerClient *dc.Client) tools.Tool {
+	sharedDockerClient = dockerClient
 	return tools.Tool{
 		Name:        "deploy_grafana",
 		Description: "Deploys a new Grafana instance to the specified target (docker, kubernetes, or remote). The Grafana instance can be configured to connect to OpenTelemetry collectors automatically.",
@@ -84,7 +96,7 @@ func GetDeployGrafanaTool() tools.Tool {
 func getDeployer(targetType deployers.TargetType) (deployers.GrafanaDeployer, error) {
 	switch targetType {
 	case deployers.TargetDocker:
-		return deployers.NewDockerDeployer()
+		return deployers.NewDockerDeployer(sharedDockerClient)
 	case deployers.TargetK8s:
 		return deployers.NewKubernetesDeployer()
 	case deployers.TargetRemote:

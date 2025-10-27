@@ -4,7 +4,7 @@ import { MessageBubble } from "../conversation/MessageBubble";
 import { ChatInput } from "../conversation/ChatInput";
 import { apiClient } from "../../services/api";
 import { useSWRConfig } from "swr";
-import { ErrorBubble } from "../conversation/ErrorBubble";
+import { ErrorBubble } from "./ErrorBubble";
 
 interface ConversationProps {
   events: AgentEvent[];

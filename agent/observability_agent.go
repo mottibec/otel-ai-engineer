@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/mottibechhofer/otel-ai-engineer/config"
 	"github.com/mottibechhofer/otel-ai-engineer/otelclient"
+	dc "github.com/mottibechhofer/otel-ai-engineer/tools/dockerclient"
 	"github.com/mottibechhofer/otel-ai-engineer/tools"
 	grafanaTools "github.com/mottibechhofer/otel-ai-engineer/tools/grafana"
 	otelTools "github.com/mottibechhofer/otel-ai-engineer/tools/otel"
@@ -92,11 +94,19 @@ Best Practices:
 		Timeout: 30 * time.Second,
 	})
 
+	// Create Docker client
+	dockerClient, err := dc.NewClient()
+	if err != nil {
+		log.Printf("Warning: Failed to create Docker client: %v", err)
+		// Continue without Docker client - other deployers will fail gracefully
+		dockerClient = nil
+	}
+
 	// Get all tools
 	allTools := []tools.Tool{}
 	allTools = append(allTools, tools.GetFileSystemTools()...)
 	allTools = append(allTools, otelTools.GetOtelTools(otelClient)...)
-	allTools = append(allTools, grafanaTools.GetGrafanaTools()...)
+	allTools = append(allTools, grafanaTools.GetGrafanaTools(dockerClient)...)
 
 	agent := NewAgent(Config{
 		Name:         "ObservabilityAgent",

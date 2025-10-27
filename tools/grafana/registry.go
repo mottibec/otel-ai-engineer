@@ -1,11 +1,17 @@
 package grafana
 
-import "github.com/mottibechhofer/otel-ai-engineer/tools"
+import (
+	dc "github.com/mottibechhofer/otel-ai-engineer/tools/dockerclient"
+	"github.com/mottibechhofer/otel-ai-engineer/tools"
+)
 
 // GetGrafanaTools returns all Grafana-related tools
-func GetGrafanaTools() []tools.Tool {
+func GetGrafanaTools(dockerClient *dc.Client) []tools.Tool {
+	// Set the shared Docker client
+	SetDockerClient(dockerClient)
+	
 	return []tools.Tool{
-		GetDeployGrafanaTool(),
+		GetDeployGrafanaTool(dockerClient),
 		GetStopGrafanaTool(),
 		GetListGrafanaInstancesTool(),
 		GetConfigureDatasourceTool(),

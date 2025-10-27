@@ -1,29 +1,32 @@
 package deployers
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
+	dc "github.com/mottibechhofer/otel-ai-engineer/tools/dockerclient"
 )
 
 // DockerDeployer handles Docker-based Grafana deployments
 type DockerDeployer struct {
-	dockerPath string
+	dockerClient *dc.Client
 }
 
 // NewDockerDeployer creates a new Docker deployer
-func NewDockerDeployer() (*DockerDeployer, error) {
-	dockerPath, err := exec.LookPath("docker")
-	if err != nil {
-		return nil, fmt.Errorf("docker not found in PATH: %w", err)
+func NewDockerDeployer(dockerClient *dc.Client) (*DockerDeployer, error) {
+	if dockerClient == nil {
+		return nil, fmt.Errorf("Docker client cannot be nil")
 	}
 
 	return &DockerDeployer{
-		dockerPath: dockerPath,
+		dockerClient: dockerClient,
 	}, nil
 }
 
@@ -34,6 +37,8 @@ func (d *DockerDeployer) GetTargetType() TargetType {
 
 // Deploy deploys Grafana as a Docker container
 func (d *DockerDeployer) Deploy(config GrafanaDeploymentConfig) (*GrafanaDeploymentResult, error) {
+	ctx := context.Background()
+
 	// Generate unique instance ID
 	instanceID := fmt.Sprintf("%s-%d", config.InstanceName, time.Now().Unix())
 	containerName := fmt.Sprintf("grafana-%s", instanceID)
@@ -51,9 +56,9 @@ func (d *DockerDeployer) Deploy(config GrafanaDeploymentConfig) (*GrafanaDeploym
 	}
 
 	// Get deployment parameters
-	network := "otel-network"
+	networkName := "otel-network"
 	if net, ok := config.Parameters["network"].(string); ok && net != "" {
-		network = net
+		networkName = net
 	}
 
 	image := "grafana/grafana:latest"
@@ -76,36 +81,61 @@ func (d *DockerDeployer) Deploy(config GrafanaDeploymentConfig) (*GrafanaDeploym
 		adminPassword = config.AdminPassword
 	}
 
-	// Build docker run command
-	args := []string{
-		"run",
-		"-d",
-		"--name", containerName,
-		"--network", network,
-		"-p", fmt.Sprintf("%s:3000", port),
-		"-e", "GF_SECURITY_ADMIN_USER=" + adminUser,
-		"-e", "GF_SECURITY_ADMIN_PASSWORD=" + adminPassword,
-		"-e", "GF_AUTH_ANONYMOUS_ENABLED=false",
-		"-e", "GF_SERVER_ROOT_URL=http://localhost:3000/",
-		"-v", fmt.Sprintf("%s:/etc/grafana/provisioning:ro", provisionDir),
-		"--restart", "unless-stopped",
-		image,
+	// Ensure network exists
+	if err := d.dockerClient.EnsureNetwork(ctx, networkName); err != nil {
+		return nil, fmt.Errorf("failed to ensure network: %w", err)
 	}
 
-	// Execute docker run
-	cmd := exec.Command(d.dockerPath, args...)
-	output, err := cmd.CombinedOutput()
+	// Build environment variables
+	env := []string{
+		fmt.Sprintf("GF_SECURITY_ADMIN_USER=%s", adminUser),
+		fmt.Sprintf("GF_SECURITY_ADMIN_PASSWORD=%s", adminPassword),
+		"GF_AUTH_ANONYMOUS_ENABLED=false",
+		"GF_SERVER_ROOT_URL=http://localhost:3000/",
+	}
+
+	// Build port bindings
+	portBinding := fmt.Sprintf("%s:3000", port)
+	portMap, err := dc.CreatePortMap([]string{portBinding})
 	if err != nil {
-		return nil, fmt.Errorf("failed to start docker container: %s - %w", string(output), err)
+		return nil, fmt.Errorf("failed to create port map: %w", err)
+	}
+
+	// Build volume binds
+	binds := []string{fmt.Sprintf("%s:/etc/grafana/provisioning:ro", provisionDir)}
+
+	// Create container config
+	containerConfig := dc.CreateContainerConfig(image, env, nil)
+
+	// Create host config
+	hostConfig := dc.CreateHostConfig(portMap, binds, networkName, "unless-stopped")
+
+	// Create network config
+	networkingConfig, err := dc.CreateNetworkConfig(networkName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create network config: %w", err)
+	}
+
+	cli := d.dockerClient.GetClient()
+
+	// Create container
+	createResp, err := cli.ContainerCreate(ctx, containerConfig, hostConfig, networkingConfig, nil, containerName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create container: %w", err)
+	}
+
+	// Start container
+	if err := cli.ContainerStart(ctx, createResp.ID, container.StartOptions{}); err != nil {
+		return nil, fmt.Errorf("failed to start container: %w", err)
 	}
 
 	// Wait a moment for container to start
 	time.Sleep(2 * time.Second)
 
 	// Check container status
-	status, err := d.getContainerStatus(containerName)
+	status, err := d.dockerClient.GetContainerStatus(ctx, containerName)
 	if err != nil {
-		logs, logErr := d.getContainerLogs(containerName)
+		logs, logErr := d.dockerClient.GetContainerLogs(ctx, containerName, 50)
 		if logErr != nil {
 			return nil, fmt.Errorf("container failed to start: %w (logs unavailable)", err)
 		}
@@ -128,17 +158,28 @@ func (d *DockerDeployer) Deploy(config GrafanaDeploymentConfig) (*GrafanaDeploym
 
 // Stop stops and removes a Grafana container
 func (d *DockerDeployer) Stop(instanceID string, params map[string]interface{}) error {
+	ctx := context.Background()
 	containerName := fmt.Sprintf("grafana-%s", instanceID)
+	cli := d.dockerClient.GetClient()
 
-	// First, try to stop the container
-	stopCmd := exec.Command(d.dockerPath, "stop", containerName)
-	if err := stopCmd.Run(); err != nil && !strings.Contains(err.Error(), "No such container") {
+	// Check if container exists
+	exists, err := d.dockerClient.ContainerExists(ctx, containerName)
+	if err != nil {
+		return fmt.Errorf("failed to check container existence: %w", err)
+	}
+
+	if !exists {
+		// Container doesn't exist, nothing to do
+		return nil
+	}
+
+	// Stop the container
+	if err := cli.ContainerStop(ctx, containerName, container.StopOptions{}); err != nil {
 		// Log but continue to remove
 	}
 
 	// Remove the container
-	rmCmd := exec.Command(d.dockerPath, "rm", containerName)
-	if err := rmCmd.Run(); err != nil {
+	if err := cli.ContainerRemove(ctx, containerName, container.RemoveOptions{}); err != nil {
 		return fmt.Errorf("failed to remove container: %w", err)
 	}
 
@@ -147,71 +188,35 @@ func (d *DockerDeployer) Stop(instanceID string, params map[string]interface{}) 
 
 // List lists all running Grafana containers
 func (d *DockerDeployer) List() ([]GrafanaInstanceInfo, error) {
-	args := []string{
-		"ps",
-		"--filter", "name=grafana-",
-		"--format", "{{.Names}},{{.Status}},{{.CreatedAt}}",
-	}
+	ctx := context.Background()
+	cli := d.dockerClient.GetClient()
 
-	cmd := exec.Command(d.dockerPath, args...)
-	output, err := cmd.CombinedOutput()
+	filtersArgs := filters.NewArgs()
+	filtersArgs.Add("name", "grafana-")
+
+	containers, err := cli.ContainerList(ctx, container.ListOptions{
+		All:     true,
+		Filters: filtersArgs,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list containers: %w", err)
 	}
 
 	var instances []GrafanaInstanceInfo
-	if len(strings.TrimSpace(string(output))) == 0 {
-		return instances, nil
-	}
-
-	lines := strings.Split(string(output), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		parts := strings.Split(line, ",")
-		if len(parts) < 2 {
-			continue
-		}
-
-		containerName := parts[0]
-		status := parts[1]
-
+	for _, cnt := range containers {
 		// Extract instance ID from container name (grafana-{id})
-		instanceID := strings.TrimPrefix(containerName, "grafana-")
+		instanceID := strings.TrimPrefix(cnt.Names[0], "/grafana-")
 
 		instances = append(instances, GrafanaInstanceInfo{
 			InstanceID:   instanceID,
 			InstanceName: instanceID,
 			TargetType:   string(TargetDocker),
-			Status:       status,
-			DeployedAt:   time.Now(),
+			Status:       cnt.Status,
+			DeployedAt:   time.Unix(cnt.Created, 0),
 		})
 	}
 
 	return instances, nil
-}
-
-// getContainerStatus gets the status of a container
-func (d *DockerDeployer) getContainerStatus(containerName string) (string, error) {
-	cmd := exec.Command(d.dockerPath, "inspect", "-f", "{{.State.Status}}", containerName)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(output)), nil
-}
-
-// getContainerLogs retrieves logs from a container
-func (d *DockerDeployer) getContainerLogs(containerName string) (string, error) {
-	cmd := exec.Command(d.dockerPath, "logs", "--tail", "50", containerName)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", err
-	}
-	return string(output), nil
 }
 
 // generateAPIKey generates a random API key for Grafana
