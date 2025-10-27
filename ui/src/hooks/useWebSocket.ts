@@ -102,6 +102,7 @@ export function useWebSocket(
       ws.onmessage = (event) => {
         try {
           const agentEvent: AgentEvent = JSON.parse(event.data);
+          console.log('[WebSocket] Received event:', agentEvent.type, agentEvent.id);
           // Only process event if this is still the current connection
           if (wsRef.current === ws) {
             setLastEvent(agentEvent);

@@ -1,15 +1,16 @@
 package deployers
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 )
 
-// DockerDeployer handles Docker-based collector deployments
+// DockerDeployer handles Docker-based Grafana deployments
 type DockerDeployer struct {
 	dockerPath string
 }
@@ -31,37 +32,48 @@ func (d *DockerDeployer) GetTargetType() TargetType {
 	return TargetDocker
 }
 
-// Deploy deploys a collector as a Docker container
-func (d *DockerDeployer) Deploy(config DeploymentConfig) (*DeploymentResult, error) {
-	// Generate unique collector ID
-	collectorID := fmt.Sprintf("%s-%d", config.CollectorName, time.Now().Unix())
-	containerName := fmt.Sprintf("otel-collector-%s", collectorID)
+// Deploy deploys Grafana as a Docker container
+func (d *DockerDeployer) Deploy(config GrafanaDeploymentConfig) (*GrafanaDeploymentResult, error) {
+	// Generate unique instance ID
+	instanceID := fmt.Sprintf("%s-%d", config.InstanceName, time.Now().Unix())
+	containerName := fmt.Sprintf("grafana-%s", instanceID)
 
-	// Create temporary config file
-	configDir := "/tmp/otel-configs"
-	if err := os.MkdirAll(configDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create config directory: %w", err)
+	// Create temporary provisioning directory
+	provisionDir := "/tmp/grafana-provisioning"
+	if err := os.MkdirAll(provisionDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create provisioning directory: %w", err)
 	}
 
-	configPath := filepath.Join(configDir, fmt.Sprintf("%s.yaml", collectorID))
-	if err := os.WriteFile(configPath, []byte(config.YAMLConfig), 0644); err != nil {
-		return nil, fmt.Errorf("failed to write config file: %w", err)
+	// Generate API key
+	apiKey, err := generateAPIKey()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate API key: %w", err)
 	}
 
 	// Get deployment parameters
-	network := "otel-network" // default
+	network := "otel-network"
 	if net, ok := config.Parameters["network"].(string); ok && net != "" {
 		network = net
 	}
 
-	image := "otel/opentelemetry-collector-contrib:latest"
+	image := "grafana/grafana:latest"
 	if img, ok := config.Parameters["image"].(string); ok && img != "" {
 		image = img
 	}
 
-	lawrenceURL := "http://lawrence:4320"
-	if url, ok := config.Parameters["lawrence_url"].(string); ok && url != "" {
-		lawrenceURL = url
+	port := "3000"
+	if p, ok := config.Parameters["port"].(string); ok && p != "" {
+		port = p
+	}
+
+	adminUser := "admin"
+	if config.AdminUser != "" {
+		adminUser = config.AdminUser
+	}
+
+	adminPassword := "admin"
+	if config.AdminPassword != "" {
+		adminPassword = config.AdminPassword
 	}
 
 	// Build docker run command
@@ -70,13 +82,14 @@ func (d *DockerDeployer) Deploy(config DeploymentConfig) (*DeploymentResult, err
 		"-d",
 		"--name", containerName,
 		"--network", network,
-		"-p", "4317", // OTLP gRPC
-		"-p", "4318", // OTLP HTTP
-		"-v", fmt.Sprintf("%s:/etc/otelcol/config.yaml:ro", configPath),
-		"-e", fmt.Sprintf("OTEL_OPAMP_SERVER=%s", lawrenceURL),
-		"-e", fmt.Sprintf("OTEL_AGENT_ID=%s", collectorID),
+		"-p", fmt.Sprintf("%s:3000", port),
+		"-e", "GF_SECURITY_ADMIN_USER=" + adminUser,
+		"-e", "GF_SECURITY_ADMIN_PASSWORD=" + adminPassword,
+		"-e", "GF_AUTH_ANONYMOUS_ENABLED=false",
+		"-e", "GF_SERVER_ROOT_URL=http://localhost:3000/",
+		"-v", fmt.Sprintf("%s:/etc/grafana/provisioning:ro", provisionDir),
+		"--restart", "unless-stopped",
 		image,
-		"--config=/etc/otelcol/config.yaml",
 	}
 
 	// Execute docker run
@@ -92,7 +105,6 @@ func (d *DockerDeployer) Deploy(config DeploymentConfig) (*DeploymentResult, err
 	// Check container status
 	status, err := d.getContainerStatus(containerName)
 	if err != nil {
-		// Container might have exited, check logs
 		logs, logErr := d.getContainerLogs(containerName)
 		if logErr != nil {
 			return nil, fmt.Errorf("container failed to start: %w (logs unavailable)", err)
@@ -100,19 +112,23 @@ func (d *DockerDeployer) Deploy(config DeploymentConfig) (*DeploymentResult, err
 		return nil, fmt.Errorf("container failed to start: %w\nLogs: %s", err, logs)
 	}
 
-	return &DeploymentResult{
-		Success:     true,
-		CollectorID: collectorID,
-		TargetType:  string(TargetDocker),
-		Status:      status,
-		Message:     fmt.Sprintf("Collector deployed in container %s", containerName),
-		DeployedAt:  time.Now(),
+	url := fmt.Sprintf("http://localhost:%s", port)
+
+	return &GrafanaDeploymentResult{
+		Success:    true,
+		InstanceID: instanceID,
+		TargetType: string(TargetDocker),
+		Status:     status,
+		Message:    fmt.Sprintf("Grafana deployed in container %s", containerName),
+		URL:        url,
+		APIKey:     apiKey,
+		DeployedAt: time.Now(),
 	}, nil
 }
 
-// Stop stops and removes a collector container
-func (d *DockerDeployer) Stop(collectorID string, params map[string]interface{}) error {
-	containerName := fmt.Sprintf("otel-collector-%s", collectorID)
+// Stop stops and removes a Grafana container
+func (d *DockerDeployer) Stop(instanceID string, params map[string]interface{}) error {
+	containerName := fmt.Sprintf("grafana-%s", instanceID)
 
 	// First, try to stop the container
 	stopCmd := exec.Command(d.dockerPath, "stop", containerName)
@@ -126,19 +142,14 @@ func (d *DockerDeployer) Stop(collectorID string, params map[string]interface{})
 		return fmt.Errorf("failed to remove container: %w", err)
 	}
 
-	// Clean up config file
-	configPath := filepath.Join("/tmp/otel-configs", fmt.Sprintf("%s.yaml", collectorID))
-	_ = os.Remove(configPath)
-
 	return nil
 }
 
-// List lists all running collector containers
-func (d *DockerDeployer) List() ([]CollectorInfo, error) {
-	// List all otel-collector-* containers
+// List lists all running Grafana containers
+func (d *DockerDeployer) List() ([]GrafanaInstanceInfo, error) {
 	args := []string{
 		"ps",
-		"--filter", "name=otel-collector-",
+		"--filter", "name=grafana-",
 		"--format", "{{.Names}},{{.Status}},{{.CreatedAt}}",
 	}
 
@@ -148,9 +159,9 @@ func (d *DockerDeployer) List() ([]CollectorInfo, error) {
 		return nil, fmt.Errorf("failed to list containers: %w", err)
 	}
 
-	var collectors []CollectorInfo
+	var instances []GrafanaInstanceInfo
 	if len(strings.TrimSpace(string(output))) == 0 {
-		return collectors, nil
+		return instances, nil
 	}
 
 	lines := strings.Split(string(output), "\n")
@@ -168,28 +179,19 @@ func (d *DockerDeployer) List() ([]CollectorInfo, error) {
 		containerName := parts[0]
 		status := parts[1]
 
-		// Extract collector ID from container name (otel-collector-{id})
-		collectorID := strings.TrimPrefix(containerName, "otel-collector-")
+		// Extract instance ID from container name (grafana-{id})
+		instanceID := strings.TrimPrefix(containerName, "grafana-")
 
-		// Try to parse deployment time from created at field
-		var deployedAt time.Time
-		if len(parts) >= 3 {
-			// CreatedAt field from docker ps
-			// This is approximate, actual deployment time would need tracking
-			deployedAt = time.Now() // Fallback
-		}
-
-		collectors = append(collectors, CollectorInfo{
-			CollectorID:  collectorID,
-			CollectorName: collectorID,
-			TargetType:    string(TargetDocker),
-			Status:        status,
-			DeployedAt:    deployedAt,
-			ConfigPath:    fmt.Sprintf("/tmp/otel-configs/%s.yaml", collectorID),
+		instances = append(instances, GrafanaInstanceInfo{
+			InstanceID:   instanceID,
+			InstanceName: instanceID,
+			TargetType:   string(TargetDocker),
+			Status:       status,
+			DeployedAt:   time.Now(),
 		})
 	}
 
-	return collectors, nil
+	return instances, nil
 }
 
 // getContainerStatus gets the status of a container
@@ -212,3 +214,11 @@ func (d *DockerDeployer) getContainerLogs(containerName string) (string, error) 
 	return string(output), nil
 }
 
+// generateAPIKey generates a random API key for Grafana
+func generateAPIKey() (string, error) {
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(bytes), nil
+}

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useCallback } from "react";
 import type { AgentEvent } from "../../types/events";
 import { MessageBubble } from "../conversation/MessageBubble";
 import { ChatInput } from "../conversation/ChatInput";
@@ -8,23 +8,18 @@ import { useSWRConfig } from "swr";
 interface ConversationProps {
   events: AgentEvent[];
   runId: string;
-  markMessageAsSent: (messageContent: string) => void;
 }
 
-export function Conversation({ events, runId, markMessageAsSent }: ConversationProps) {
+export function Conversation({ events, runId }: ConversationProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { mutate } = useSWRConfig();
 
-  const messageEvents = useMemo(
-    () => events.filter((e) => e.type === "message"),
-    [events]
-  );
+  const messageEvents = events.filter((e) => e.type === "message");
 
   const handleSendMessage = useCallback(async (messageContent: string) => {
     setIsSubmitting(true);
-    
+
     try {
-      markMessageAsSent(messageContent);
       await apiClient.resumeRun(runId, messageContent);
       mutate("/api/runs");
       mutate(`/api/runs/${runId}`);
@@ -33,7 +28,7 @@ export function Conversation({ events, runId, markMessageAsSent }: ConversationP
     } finally {
       setIsSubmitting(false);
     }
-  }, [runId, markMessageAsSent, mutate]);
+  }, [runId, mutate]);
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -47,6 +42,7 @@ export function Conversation({ events, runId, markMessageAsSent }: ConversationP
           />
         ))}
 
+        {/* Show "No messages yet" when no messages */}
         {messageEvents.length === 0 && (
           <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
             No messages yet

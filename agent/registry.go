@@ -75,6 +75,22 @@ func (r *Registry) registerBuiltInAgents() {
 		otelAgent.eventEmitter = emitter
 		return otelAgent.Agent, nil
 	})
+
+	// Register ObservabilityAgent
+	r.Register(AgentInfo{
+		ID:          "observability",
+		Name:        "Observability Agent",
+		Description: "An AI agent specialized for complete observability infrastructure setup with OTEL collectors, Grafana visualization, and code analysis",
+		Model:       string(anthropic.ModelClaudeSonnet4_5_20250929),
+	}, func(client *anthropic.Client, logLevel config.LogLevel, emitter events.EventEmitter) (*Agent, error) {
+		observabilityAgent, err := NewObservabilityAgent(client, logLevel)
+		if err != nil {
+			return nil, err
+		}
+		// Set the event emitter
+		observabilityAgent.eventEmitter = emitter
+		return observabilityAgent.Agent, nil
+	})
 }
 
 // Register adds a new agent type to the registry

@@ -15,6 +15,7 @@ services:
       - ./server:/app/server
       - ./tools:/app/tools
       - ./otelclient:/app/otelclient
+      - ./grafanaclient:/app/grafanaclient
       - ./config:/app/config
       - ./go.mod:/app/go.mod
       - ./go.sum:/app/go.sum
@@ -86,12 +87,38 @@ services:
     networks:
       - otel-network
 
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana-oss
+    ports:
+      - "3000:3000" # Grafana web interface
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./tools/grafana/provisioning:/etc/grafana/provisioning:ro
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_SERVER_ROOT_URL=http://localhost:3000/
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - otel-network
+    depends_on:
+      - lawrence
+
 volumes:
   go-build-cache:
     driver: local
   go-mod-cache:
     driver: local
   lawrence-data:
+    driver: local
+  grafana-data:
     driver: local
 
 networks:
