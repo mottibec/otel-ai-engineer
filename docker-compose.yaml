@@ -20,6 +20,8 @@ services:
       - ./go.mod:/app/go.mod
       - ./go.sum:/app/go.sum
       - ./.env:/app/.env
+      # Mount example folder for agent testing
+      - ./example:/app/example
       # Persist go build cache for faster rebuilds
       - go-build-cache:/root/.cache/go-build
       - go-mod-cache:/go/pkg/mod
@@ -87,29 +89,6 @@ services:
     networks:
       - otel-network
 
-  grafana:
-    image: grafana/grafana:latest
-    container_name: grafana-oss
-    ports:
-      - "3000:3000" # Grafana web interface
-    volumes:
-      - grafana-data:/var/lib/grafana
-      - ./tools/grafana/provisioning:/etc/grafana/provisioning:ro
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_AUTH_ANONYMOUS_ENABLED=false
-      - GF_SERVER_ROOT_URL=http://localhost:3000/
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    networks:
-      - otel-network
-    depends_on:
-      - lawrence
 
 volumes:
   go-build-cache:
@@ -117,8 +96,6 @@ volumes:
   go-mod-cache:
     driver: local
   lawrence-data:
-    driver: local
-  grafana-data:
     driver: local
 
 networks:

@@ -1,7 +1,5 @@
 import type { Run } from "../../types/models";
 import { StatusBadge } from "../common/StatusBadge";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   formatDate,
   formatDuration,

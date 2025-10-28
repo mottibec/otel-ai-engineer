@@ -8,7 +8,7 @@ interface LayoutProps {
   onRunCreated?: (runId: string) => void;
 }
 
-export function Layout({ sidebar, children, onRunCreated }: LayoutProps) {
+export function Layout({ sidebar, children }: LayoutProps) {
   // Read the sidebar state from cookie, default to true (expanded) if not found
   const sidebarCookie = getCookie("sidebar_state");
   const defaultOpen = sidebarCookie === null ? true : sidebarCookie === "true";

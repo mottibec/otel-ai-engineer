@@ -91,6 +91,63 @@ func (r *Registry) registerBuiltInAgents() {
 		observabilityAgent.eventEmitter = emitter
 		return observabilityAgent.Agent, nil
 	})
+
+	// Register specialized agents for plan management
+	r.Register(AgentInfo{
+		ID:          "instrumentation",
+		Name:        "Instrumentation Agent",
+		Description: "Specialized agent for instrumenting services with OpenTelemetry",
+		Model:       string(anthropic.ModelClaudeSonnet4_5_20250929),
+	}, func(client *anthropic.Client, logLevel config.LogLevel, emitter events.EventEmitter) (*Agent, error) {
+		instrumentationAgent, err := NewInstrumentationAgent(client, logLevel)
+		if err != nil {
+			return nil, err
+		}
+		instrumentationAgent.eventEmitter = emitter
+		return instrumentationAgent.Agent, nil
+	})
+
+	r.Register(AgentInfo{
+		ID:          "infrastructure",
+		Name:        "Infrastructure Agent",
+		Description: "Specialized agent for infrastructure monitoring setup",
+		Model:       string(anthropic.ModelClaudeSonnet4_5_20250929),
+	}, func(client *anthropic.Client, logLevel config.LogLevel, emitter events.EventEmitter) (*Agent, error) {
+		infrastructureAgent, err := NewInfrastructureAgent(client, logLevel)
+		if err != nil {
+			return nil, err
+		}
+		infrastructureAgent.eventEmitter = emitter
+		return infrastructureAgent.Agent, nil
+	})
+
+	r.Register(AgentInfo{
+		ID:          "pipeline",
+		Name:        "Pipeline Agent",
+		Description: "Specialized agent for collector pipeline configuration",
+		Model:       string(anthropic.ModelClaudeSonnet4_5_20250929),
+	}, func(client *anthropic.Client, logLevel config.LogLevel, emitter events.EventEmitter) (*Agent, error) {
+		pipelineAgent, err := NewPipelineAgent(client, logLevel)
+		if err != nil {
+			return nil, err
+		}
+		pipelineAgent.eventEmitter = emitter
+		return pipelineAgent.Agent, nil
+	})
+
+	r.Register(AgentInfo{
+		ID:          "backend",
+		Name:        "Backend Agent",
+		Description: "Specialized agent for backend connectivity and validation",
+		Model:       string(anthropic.ModelClaudeSonnet4_5_20250929),
+	}, func(client *anthropic.Client, logLevel config.LogLevel, emitter events.EventEmitter) (*Agent, error) {
+		backendAgent, err := NewBackendAgent(client, logLevel)
+		if err != nil {
+			return nil, err
+		}
+		backendAgent.eventEmitter = emitter
+		return backendAgent.Agent, nil
+	})
 }
 
 // Register adds a new agent type to the registry

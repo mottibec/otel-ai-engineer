@@ -1,6 +1,7 @@
 import type { Run, Agent, StartRunRequest } from "../types/models";
 import type { AgentEvent } from "../types/events";
 import type { Trace } from "../types/trace";
+import type { ObservabilityPlan, TopologyGraph } from "../types/plan";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
 
@@ -140,6 +141,69 @@ export class ApiClient {
     });
     if (!response.ok) {
       throw new Error(`Failed to resume run: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  // Plan management methods
+  async listPlans(): Promise<ObservabilityPlan[]> {
+    const response = await fetch(`${this.baseUrl}/plans`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch plans: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async getPlan(planId: string): Promise<ObservabilityPlan> {
+    const response = await fetch(`${this.baseUrl}/plans/${planId}`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch plan: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async createPlan(plan: Partial<ObservabilityPlan>): Promise<ObservabilityPlan> {
+    const response = await fetch(`${this.baseUrl}/plans`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(plan),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to create plan: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async updatePlan(planId: string, updates: Partial<ObservabilityPlan>): Promise<{ status: string }> {
+    const response = await fetch(`${this.baseUrl}/plans/${planId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(updates),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to update plan: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async deletePlan(planId: string): Promise<{ status: string }> {
+    const response = await fetch(`${this.baseUrl}/plans/${planId}`, {
+      method: "DELETE",
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to delete plan: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  async getPlanTopology(planId: string): Promise<TopologyGraph> {
+    const response = await fetch(`${this.baseUrl}/plans/${planId}/topology`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch topology: ${response.statusText}`);
     }
     return response.json();
   }

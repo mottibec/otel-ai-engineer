@@ -16,12 +16,16 @@ interface AgentSidebarProps {
   selectedRunId?: string;
   onSelectRun: (runId: string) => void;
   onRunCreated?: (runId: string) => void;
+  viewMode?: "runs" | "plans";
+  onViewModeChange?: (mode: "runs" | "plans") => void;
 }
 
 export function AgentSidebar({
   selectedRunId,
   onSelectRun,
   onRunCreated,
+  viewMode = "runs",
+  onViewModeChange,
 }: AgentSidebarProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { state } = useSidebar();
@@ -56,6 +60,33 @@ export function AgentSidebar({
                 </div>
                 <SidebarTrigger className="h-6 w-6 flex-shrink-0" />
               </div>
+              
+              {/* View Mode Toggle */}
+              {onViewModeChange && (
+                <div className="flex gap-1 p-1 bg-muted rounded-md">
+                  <button
+                    onClick={() => onViewModeChange("runs")}
+                    className={`flex-1 px-2 py-1 text-xs rounded transition-colors ${
+                      viewMode === "runs"
+                        ? "bg-background text-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Runs
+                  </button>
+                  <button
+                    onClick={() => onViewModeChange("plans")}
+                    className={`flex-1 px-2 py-1 text-xs rounded transition-colors ${
+                      viewMode === "plans"
+                        ? "bg-background text-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Plans
+                  </button>
+                </div>
+              )}
+              
               {/* New Chat Button */}
               <Button
                 onClick={() => setIsModalOpen(true)}
