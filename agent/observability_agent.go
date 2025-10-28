@@ -11,11 +11,17 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/mottibechhofer/otel-ai-engineer/config"
 	"github.com/mottibechhofer/otel-ai-engineer/otelclient"
-	dc "github.com/mottibechhofer/otel-ai-engineer/tools/dockerclient"
 	"github.com/mottibechhofer/otel-ai-engineer/tools"
+	dc "github.com/mottibechhofer/otel-ai-engineer/tools/dockerclient"
 	grafanaTools "github.com/mottibechhofer/otel-ai-engineer/tools/grafana"
 	otelTools "github.com/mottibechhofer/otel-ai-engineer/tools/otel"
+	"github.com/mottibechhofer/otel-ai-engineer/tools/plan"
 )
+
+// getPlanTools returns plan management tools
+func getPlanTools() []tools.Tool {
+	return plan.GetPlanTools()
+}
 
 // ObservabilityAgent is a specialized agent for complete observability infrastructure
 type ObservabilityAgent struct {
@@ -28,6 +34,13 @@ func NewObservabilityAgent(client *anthropic.Client, logLevel config.LogLevel) (
 	systemPrompt := `You are an expert observability infrastructure assistant with access to file system operations, OpenTelemetry collector management, and Grafana visualization tools.
 
 Your capabilities:
+- **Observability Plan Management**:
+  - Create and manage complete observability plans
+  - Track instrumented services, infrastructure components, pipelines, and backends
+  - Delegate specific tasks to specialized agents (InstrumentationAgent, InfrastructureAgent, PipelineAgent, BackendAgent)
+  - Generate and visualize dependency topologies
+  - Execute plans with agent delegation
+
 - **OpenTelemetry Collector Management**:
   - List all connected OpenTelemetry collectors and their status
   - View and inspect collector configurations (YAML format)
@@ -47,6 +60,15 @@ Your capabilities:
   - Search for files and directories
   - Analyze application codebases
   - Create and manage configurations
+
+- **Task Delegation**:
+  - Use the 'handoff_task' tool for granular delegation when beneficial
+  - Delegate service instrumentation to 'instrumentation' agent
+  - Delegate infrastructure monitoring setup to 'infrastructure' agent
+  - Delegate collector pipeline configuration to 'pipeline' agent
+  - Delegate backend connectivity to 'backend' agent
+  - Delegate coding tasks to 'coding' agent
+  - The handoff is blocking - wait for completion before proceeding
 
 When setting up complete observability:
 
@@ -102,11 +124,15 @@ Best Practices:
 		dockerClient = nil
 	}
 
-	// Get all tools
+	// Get all tools including plan management tools
 	allTools := []tools.Tool{}
 	allTools = append(allTools, tools.GetFileSystemTools()...)
 	allTools = append(allTools, otelTools.GetOtelTools(otelClient)...)
 	allTools = append(allTools, grafanaTools.GetGrafanaTools(dockerClient)...)
+
+	// Add plan management tools
+	planTools := getPlanTools()
+	allTools = append(allTools, planTools...)
 
 	agent := NewAgent(Config{
 		Name:         "ObservabilityAgent",

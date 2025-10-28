@@ -1,6 +1,5 @@
 import type { Run } from "../../types/models";
 import { formatNumber, formatDuration } from "../../utils/formatters";
-import { Card, CardContent } from "@/components/ui/card";
 
 interface MetricsPanelProps {
   run: Run;

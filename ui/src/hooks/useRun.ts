@@ -9,8 +9,10 @@ export function useRun(runId: string | undefined) {
     data: run,
     error,
     isLoading: loading,
-  } = useSWR<Run>(runId ? `/api/runs/${runId}` : null, () =>
-    runId ? fetcher(runId) : null
+  } = useSWR<Run>(
+    runId ? `/api/runs/${runId}` : null,
+    runId ? () => fetcher(runId) : null,
+    { revalidateOnFocus: false }
   );
 
   return {

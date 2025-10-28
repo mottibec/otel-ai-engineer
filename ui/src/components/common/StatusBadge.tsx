@@ -1,8 +1,10 @@
 import type { RunStatus } from "../../types/models";
 import { Badge } from "@/components/ui/badge";
 
+type Status = RunStatus | "draft" | "pending" | "executing" | "partial" | "healthy" | "unhealthy" | "unknown";
+
 interface StatusBadgeProps {
-  status: RunStatus;
+  status: Status | string;
 }
 
 export function StatusBadge({ status }: StatusBadgeProps) {

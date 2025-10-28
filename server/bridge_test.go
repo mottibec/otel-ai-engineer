@@ -155,6 +155,132 @@ func (m *MockStorage) Close() error {
 	return nil
 }
 
+// Plan management methods (stubs for testing)
+func (m *MockStorage) CreatePlan(plan *storage.ObservabilityPlan) error {
+	return fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) GetPlan(planID string) (*storage.ObservabilityPlan, error) {
+	return nil, fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) ListPlans() ([]*storage.ObservabilityPlan, error) {
+	return nil, fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) UpdatePlan(planID string, update *storage.PlanUpdate) error {
+	return fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) DeletePlan(planID string) error {
+	return fmt.Errorf("not implemented in MockStorage")
+}
+
+// Service management methods
+func (m *MockStorage) CreateService(service *storage.InstrumentedService) error {
+	return fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) GetService(serviceID string) (*storage.InstrumentedService, error) {
+	return nil, fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) GetServicesByPlan(planID string) ([]*storage.InstrumentedService, error) {
+	return nil, fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) UpdateService(serviceID string, service *storage.InstrumentedService) error {
+	return fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) DeleteService(serviceID string) error {
+	return fmt.Errorf("not implemented in MockStorage")
+}
+
+// Infrastructure management methods
+func (m *MockStorage) CreateInfrastructure(infra *storage.InfrastructureComponent) error {
+	return fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) GetInfrastructure(infraID string) (*storage.InfrastructureComponent, error) {
+	return nil, fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) GetInfrastructureByPlan(planID string) ([]*storage.InfrastructureComponent, error) {
+	return nil, fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) UpdateInfrastructure(infraID string, infra *storage.InfrastructureComponent) error {
+	return fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) DeleteInfrastructure(infraID string) error {
+	return fmt.Errorf("not implemented in MockStorage")
+}
+
+// Pipeline management methods
+func (m *MockStorage) CreatePipeline(pipeline *storage.CollectorPipeline) error {
+	return fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) GetPipeline(pipelineID string) (*storage.CollectorPipeline, error) {
+	return nil, fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) GetPipelinesByPlan(planID string) ([]*storage.CollectorPipeline, error) {
+	return nil, fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) UpdatePipeline(pipelineID string, pipeline *storage.CollectorPipeline) error {
+	return fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) DeletePipeline(pipelineID string) error {
+	return fmt.Errorf("not implemented in MockStorage")
+}
+
+// Backend management methods
+func (m *MockStorage) CreateBackend(backend *storage.Backend) error {
+	return fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) GetBackend(backendID string) (*storage.Backend, error) {
+	return nil, fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) GetBackendsByPlan(planID string) ([]*storage.Backend, error) {
+	return nil, fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) UpdateBackend(backendID string, backend *storage.Backend) error {
+	return fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) DeleteBackend(backendID string) error {
+	return fmt.Errorf("not implemented in MockStorage")
+}
+
+// Dependency management methods
+func (m *MockStorage) CreateDependency(dep *storage.PlanDependency) error {
+	return fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) GetDependenciesByPlan(planID string) ([]*storage.PlanDependency, error) {
+	return nil, fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) GetDependenciesBySource(sourceID string) ([]*storage.PlanDependency, error) {
+	return nil, fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) GetDependenciesByTarget(targetID string) ([]*storage.PlanDependency, error) {
+	return nil, fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) DeleteDependency(depID string) error {
+	return fmt.Errorf("not implemented in MockStorage")
+}
+
 // TestEventBridgeCreation verifies EventBridge is created correctly
 func TestEventBridgeCreation(t *testing.T) {
 	stor := NewMockStorage()

@@ -110,6 +110,140 @@ func (s *SQLiteStorage) initSchema() error {
 		return fmt.Errorf("failed to migrate schema: %w", err)
 	}
 
+	// Create plan tables
+	if err := s.initPlanSchema(); err != nil {
+		return fmt.Errorf("failed to initialize plan schema: %w", err)
+	}
+
+	return nil
+}
+
+// initPlanSchema creates tables for observability plan management
+func (s *SQLiteStorage) initPlanSchema() error {
+	// Create observability_plans table
+	plansTable := `
+	CREATE TABLE IF NOT EXISTS observability_plans (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		description TEXT,
+		environment TEXT,
+		status TEXT NOT NULL,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);`
+
+	// Create instrumented_services table
+	servicesTable := `
+	CREATE TABLE IF NOT EXISTS instrumented_services (
+		id TEXT PRIMARY KEY,
+		plan_id TEXT NOT NULL,
+		service_name TEXT NOT NULL,
+		language TEXT,
+		framework TEXT,
+		sdk_version TEXT,
+		config_file TEXT,
+		status TEXT,
+		code_changes_summary TEXT,
+		target_path TEXT,
+		exporter_endpoint TEXT,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (plan_id) REFERENCES observability_plans(id) ON DELETE CASCADE
+	);`
+
+	// Create infrastructure_components table
+	infrastructureTable := `
+	CREATE TABLE IF NOT EXISTS infrastructure_components (
+		id TEXT PRIMARY KEY,
+		plan_id TEXT NOT NULL,
+		component_type TEXT,
+		name TEXT NOT NULL,
+		host TEXT,
+		receiver_type TEXT,
+		metrics_collected TEXT,
+		status TEXT,
+		config TEXT,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (plan_id) REFERENCES observability_plans(id) ON DELETE CASCADE
+	);`
+
+	// Create collector_pipelines table
+	pipelinesTable := `
+	CREATE TABLE IF NOT EXISTS collector_pipelines (
+		id TEXT PRIMARY KEY,
+		plan_id TEXT NOT NULL,
+		collector_id TEXT,
+		name TEXT NOT NULL,
+		config_yaml TEXT,
+		rules TEXT,
+		status TEXT,
+		target_type TEXT,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (plan_id) REFERENCES observability_plans(id) ON DELETE CASCADE
+	);`
+
+	// Create backends table
+	backendsTable := `
+	CREATE TABLE IF NOT EXISTS backends (
+		id TEXT PRIMARY KEY,
+		plan_id TEXT NOT NULL,
+		backend_type TEXT,
+		name TEXT NOT NULL,
+		url TEXT NOT NULL,
+		credentials TEXT,
+		health_status TEXT,
+		last_check TIMESTAMP,
+		datasource_uid TEXT,
+		config TEXT,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (plan_id) REFERENCES observability_plans(id) ON DELETE CASCADE
+	);`
+
+	// Create plan_dependencies table
+	dependenciesTable := `
+	CREATE TABLE IF NOT EXISTS plan_dependencies (
+		id TEXT PRIMARY KEY,
+		plan_id TEXT NOT NULL,
+		source_id TEXT NOT NULL,
+		source_type TEXT,
+		target_id TEXT NOT NULL,
+		target_type TEXT,
+		dependency_type TEXT,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (plan_id) REFERENCES observability_plans(id) ON DELETE CASCADE
+	);`
+
+	// Create indexes for plan tables
+	planIndexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_plans_status ON observability_plans(status);",
+		"CREATE INDEX IF NOT EXISTS idx_services_plan_id ON instrumented_services(plan_id);",
+		"CREATE INDEX IF NOT EXISTS idx_services_status ON instrumented_services(status);",
+		"CREATE INDEX IF NOT EXISTS idx_infrastructure_plan_id ON infrastructure_components(plan_id);",
+		"CREATE INDEX IF NOT EXISTS idx_pipelines_plan_id ON collector_pipelines(plan_id);",
+		"CREATE INDEX IF NOT EXISTS idx_backends_plan_id ON backends(plan_id);",
+		"CREATE INDEX IF NOT EXISTS idx_dependencies_plan_id ON plan_dependencies(plan_id);",
+		"CREATE INDEX IF NOT EXISTS idx_dependencies_source ON plan_dependencies(source_id);",
+		"CREATE INDEX IF NOT EXISTS idx_dependencies_target ON plan_dependencies(target_id);",
+	}
+
+	// Execute table creation
+	tables := []string{plansTable, servicesTable, infrastructureTable, pipelinesTable, backendsTable, dependenciesTable}
+	for _, table := range tables {
+		if _, err := s.db.Exec(table); err != nil {
+			return fmt.Errorf("failed to create plan table: %w", err)
+		}
+	}
+
+	// Execute index creation
+	for _, index := range planIndexes {
+		if _, err := s.db.Exec(index); err != nil {
+			return fmt.Errorf("failed to create plan index: %w", err)
+		}
+	}
+
 	return nil
 }
 

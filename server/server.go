@@ -39,6 +39,7 @@ type Server struct {
 	runService       *service.RunService           // Service layer for business logic
 	activeRunManager *service.ActiveRunManagerImpl // Manager for active runs
 	traceService     *service.TraceService         // Service for trace computation
+	planService      *service.PlanService           // Service for plan management
 }
 
 // Config holds server configuration
@@ -76,6 +77,9 @@ func New(cfg Config) *Server {
 	// Create trace service
 	traceService := service.NewTraceService(cfg.Storage)
 
+	// Create plan service
+	planService := service.NewPlanService(cfg.Storage)
+
 	s := &Server{
 		storage:          cfg.Storage,
 		hub:              NewWebSocketHub(),
@@ -89,6 +93,7 @@ func New(cfg Config) *Server {
 		runService:       runService,
 		activeRunManager: activeRunManager,
 		traceService:     traceService,
+		planService:      planService,
 	}
 
 	s.setupRoutes()
@@ -123,6 +128,35 @@ func (s *Server) setupRoutes() {
 	// WebSocket endpoints
 	api.HandleFunc("/runs/{runId}/stream", s.HandleWebSocket)
 	api.HandleFunc("/stream", s.HandleWebSocketAll)
+
+	// Plan endpoints
+	api.HandleFunc("/plans", s.HandleListPlans).Methods("GET")
+	api.HandleFunc("/plans", s.HandleCreatePlan).Methods("POST")
+	api.HandleFunc("/plans/{planId}", s.HandleGetPlan).Methods("GET")
+	api.HandleFunc("/plans/{planId}", s.HandleUpdatePlan).Methods("PUT")
+	api.HandleFunc("/plans/{planId}", s.HandleDeletePlan).Methods("DELETE")
+	api.HandleFunc("/plans/{planId}/topology", s.HandleGetTopology).Methods("GET")
+	api.HandleFunc("/plans/{planId}/execute", s.HandleExecutePlan).Methods("POST")
+
+	// Service component endpoints
+	api.HandleFunc("/plans/{planId}/services", s.HandleCreateService).Methods("POST")
+	api.HandleFunc("/plans/{planId}/services/{serviceId}", s.HandleUpdateService).Methods("PUT")
+	api.HandleFunc("/plans/{planId}/services/{serviceId}", s.HandleDeleteService).Methods("DELETE")
+
+	// Infrastructure component endpoints
+	api.HandleFunc("/plans/{planId}/infrastructure", s.HandleCreateInfrastructure).Methods("POST")
+	api.HandleFunc("/plans/{planId}/infrastructure/{infraId}", s.HandleUpdateInfrastructure).Methods("PUT")
+	api.HandleFunc("/plans/{planId}/infrastructure/{infraId}", s.HandleDeleteInfrastructure).Methods("DELETE")
+
+	// Pipeline component endpoints
+	api.HandleFunc("/plans/{planId}/pipelines", s.HandleCreatePipeline).Methods("POST")
+	api.HandleFunc("/plans/{planId}/pipelines/{pipelineId}", s.HandleUpdatePipeline).Methods("PUT")
+	api.HandleFunc("/plans/{planId}/pipelines/{pipelineId}", s.HandleDeletePipeline).Methods("DELETE")
+
+	// Backend component endpoints
+	api.HandleFunc("/plans/{planId}/backends", s.HandleCreateBackend).Methods("POST")
+	api.HandleFunc("/plans/{planId}/backends/{backendId}", s.HandleUpdateBackend).Methods("PUT")
+	api.HandleFunc("/plans/{planId}/backends/{backendId}", s.HandleDeleteBackend).Methods("DELETE")
 
 	// CORS middleware
 	s.router.Use(corsMiddleware)

@@ -148,3 +148,114 @@ type Trace struct {
 	Duration   string    `json:"duration,omitempty"`
 	DurationMs int64     `json:"duration_ms,omitempty"`
 }
+
+// PlanStatus represents the status of an observability plan
+type PlanStatus string
+
+const (
+	PlanStatusDraft     PlanStatus = "draft"
+	PlanStatusPending   PlanStatus = "pending"
+	PlanStatusExecuting PlanStatus = "executing"
+	PlanStatusPartial   PlanStatus = "partial"
+	PlanStatusSuccess   PlanStatus = "success"
+	PlanStatusFailed    PlanStatus = "failed"
+)
+
+// ObservabilityPlan represents a complete observability setup plan
+type ObservabilityPlan struct {
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	Environment string     `json:"environment"`
+	Status      PlanStatus `json:"status"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	// Components - will be loaded separately
+	Services        []*InstrumentedService    `json:"services,omitempty"`
+	Infrastructure  []*InfrastructureComponent `json:"infrastructure,omitempty"`
+	Pipelines       []*CollectorPipeline       `json:"pipelines,omitempty"`
+	Backends        []*Backend                 `json:"backends,omitempty"`
+	Dependencies    []*PlanDependency          `json:"dependencies,omitempty"`
+}
+
+// InstrumentedService represents a service that needs instrumentation
+type InstrumentedService struct {
+	ID                  string    `json:"id"`
+	PlanID              string    `json:"plan_id"`
+	ServiceName         string    `json:"service_name"`
+	Language            string    `json:"language"`
+	Framework           string    `json:"framework"`
+	SDKVersion          string    `json:"sdk_version"`
+	ConfigFile          string    `json:"config_file"`
+	Status              string    `json:"status"`
+	CodeChangesSummary  string    `json:"code_changes_summary"`
+	TargetPath          string    `json:"target_path"`
+	ExporterEndpoint    string    `json:"exporter_endpoint"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
+}
+
+// InfrastructureComponent represents infrastructure to be monitored
+type InfrastructureComponent struct {
+	ID             string    `json:"id"`
+	PlanID         string    `json:"plan_id"`
+	ComponentType  string    `json:"component_type"`  // "database", "cache", "queue", "host"
+	Name           string    `json:"name"`
+	Host           string    `json:"host"`
+	ReceiverType   string    `json:"receiver_type"`   // "postgres", "mysql", "redis", "hostmetrics"
+	MetricsCollected string  `json:"metrics_collected"` // JSON array or comma-separated
+	Status         string    `json:"status"`
+	Config         string    `json:"config,omitempty"` // Additional configuration JSON
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+// CollectorPipeline represents a collector configuration pipeline
+type CollectorPipeline struct {
+	ID           string    `json:"id"`
+	PlanID       string    `json:"plan_id"`
+	CollectorID  string    `json:"collector_id"` // Reference to deployed collector
+	Name         string    `json:"name"`
+	ConfigYAML   string    `json:"config_yaml"`
+	Rules        string    `json:"rules"` // JSON object with sampling, filtering, etc.
+	Status       string    `json:"status"`
+	TargetType   string    `json:"target_type"` // "docker", "kubernetes", "remote"
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+// Backend represents an observability backend
+type Backend struct {
+	ID            string     `json:"id"`
+	PlanID        string     `json:"plan_id"`
+	BackendType   string     `json:"backend_type"` // "grafana", "prometheus", "jaeger", "custom"
+	Name          string     `json:"name"`
+	URL           string     `json:"url"`
+	Credentials   string     `json:"credentials"` // Encrypted credentials
+	HealthStatus  string     `json:"health_status"` // "healthy", "unhealthy", "unknown"
+	LastCheck     *time.Time `json:"last_check,omitempty"`
+	DatasourceUID string     `json:"datasource_uid,omitempty"` // For Grafana datasources
+	Config        string     `json:"config,omitempty"` // Additional configuration JSON
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+}
+
+// PlanDependency represents a relationship between plan components
+type PlanDependency struct {
+	ID             string `json:"id"`
+	PlanID         string `json:"plan_id"`
+	SourceID       string `json:"source_id"`
+	SourceType     string `json:"source_type"`     // "service", "infrastructure", "pipeline", "backend"
+	TargetID       string `json:"target_id"`
+	TargetType     string `json:"target_type"`     // Same types
+	DependencyType string `json:"dependency_type"` // "data_flow", "depends_on", "used_by"
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+// PlanUpdate contains fields that can be updated on a plan
+type PlanUpdate struct {
+	Name        *string
+	Description *string
+	Environment *string
+	Status      *PlanStatus
+}
