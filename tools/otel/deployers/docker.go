@@ -1,17 +1,21 @@
 package deployers
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	dc "github.com/mottibechhofer/otel-ai-engineer/tools/dockerclient"
 )
 
 // DockerDeployer handles Docker-based collector deployments
 type DockerDeployer struct {
-	dockerPath string
+	dockerPath   string
+	dockerClient *dc.Client
 }
 
 // NewDockerDeployer creates a new Docker deployer
@@ -21,8 +25,15 @@ func NewDockerDeployer() (*DockerDeployer, error) {
 		return nil, fmt.Errorf("docker not found in PATH: %w", err)
 	}
 
+	// Create Docker client for network operations
+	dockerClient, err := dc.NewClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Docker client: %w", err)
+	}
+
 	return &DockerDeployer{
-		dockerPath: dockerPath,
+		dockerPath:   dockerPath,
+		dockerClient: dockerClient,
 	}, nil
 }
 
@@ -37,15 +48,57 @@ func (d *DockerDeployer) Deploy(config DeploymentConfig) (*DeploymentResult, err
 	collectorID := fmt.Sprintf("%s-%d", config.CollectorName, time.Now().Unix())
 	containerName := fmt.Sprintf("otel-collector-%s", collectorID)
 
-	// Create temporary config file
-	configDir := "/tmp/otel-configs"
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	// Create config file in a location accessible from host Docker daemon
+	// When running inside Docker container:
+	// - Write to container mount point (e.g., /otel-configs)
+	// - Use host path (from env var) when mounting in docker run
+	containerConfigDir := os.Getenv("OTEL_CONFIGS_DIR")
+	if containerConfigDir == "" {
+		containerConfigDir = "/tmp/otel-configs"
+	}
+
+	// Get host path for Docker volume mounting (needed when running inside container)
+	hostConfigDir := os.Getenv("OTEL_CONFIGS_HOST_PATH")
+
+	// Create directory in container
+	if err := os.MkdirAll(containerConfigDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create config directory: %w", err)
 	}
 
-	configPath := filepath.Join(configDir, fmt.Sprintf("%s.yaml", collectorID))
+	configPath := filepath.Join(containerConfigDir, fmt.Sprintf("%s.yaml", collectorID))
 	if err := os.WriteFile(configPath, []byte(config.YAMLConfig), 0644); err != nil {
 		return nil, fmt.Errorf("failed to write config file: %w", err)
+	}
+
+	// Verify the file exists and is actually a file (not a directory)
+	fileInfo, err := os.Stat(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify config file exists: %w", err)
+	}
+	if fileInfo.IsDir() {
+		return nil, fmt.Errorf("config path is a directory, not a file: %s", configPath)
+	}
+
+	// Determine path to use for Docker volume mount
+	var absConfigPath string
+	if hostConfigDir != "" {
+		// Use host path - this is what Docker daemon on host will see
+		absConfigPath = filepath.Join(hostConfigDir, fmt.Sprintf("%s.yaml", collectorID))
+		// Ensure it's absolute
+		if !filepath.IsAbs(absConfigPath) {
+			var err error
+			absConfigPath, err = filepath.Abs(absConfigPath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get absolute path for config file: %w", err)
+			}
+		}
+	} else {
+		// Not in containerized environment, use container path as-is
+		var err error
+		absConfigPath, err = filepath.Abs(configPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get absolute path for config file: %w", err)
+		}
 	}
 
 	// Get deployment parameters
@@ -64,6 +117,15 @@ func (d *DockerDeployer) Deploy(config DeploymentConfig) (*DeploymentResult, err
 		lawrenceURL = url
 	}
 
+	// Ensure network exists before deploying
+	ctx := context.Background()
+	if err := d.dockerClient.EnsureNetwork(ctx, network); err != nil {
+		return nil, fmt.Errorf("failed to ensure network '%s': %w", network, err)
+	}
+
+	// Brief delay to ensure network is fully available for Docker CLI
+	time.Sleep(200 * time.Millisecond)
+
 	// Build docker run command
 	args := []string{
 		"run",
@@ -72,7 +134,7 @@ func (d *DockerDeployer) Deploy(config DeploymentConfig) (*DeploymentResult, err
 		"--network", network,
 		"-p", "4317", // OTLP gRPC
 		"-p", "4318", // OTLP HTTP
-		"-v", fmt.Sprintf("%s:/etc/otelcol/config.yaml:ro", configPath),
+		"-v", fmt.Sprintf("%s:/etc/otelcol/config.yaml:ro", absConfigPath),
 		"-e", fmt.Sprintf("OTEL_OPAMP_SERVER=%s", lawrenceURL),
 		"-e", fmt.Sprintf("OTEL_AGENT_ID=%s", collectorID),
 		image,
@@ -80,10 +142,15 @@ func (d *DockerDeployer) Deploy(config DeploymentConfig) (*DeploymentResult, err
 	}
 
 	// Execute docker run
-	cmd := exec.Command(d.dockerPath, args...)
+	cmd := exec.CommandContext(ctx, d.dockerPath, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("failed to start docker container: %s - %w", string(output), err)
+		// Provide more detailed error for network issues
+		errMsg := string(output)
+		if strings.Contains(errMsg, "network") && strings.Contains(errMsg, "not found") {
+			return nil, fmt.Errorf("network '%s' not found - this may be a timing issue. Original error: %s - %w. Try ensuring the network exists manually with: docker network create %s", network, errMsg, err, network)
+		}
+		return nil, fmt.Errorf("failed to start docker container: %s - %w", errMsg, err)
 	}
 
 	// Wait a moment for container to start
@@ -127,17 +194,22 @@ func (d *DockerDeployer) Stop(collectorID string, params map[string]interface{})
 	}
 
 	// Clean up config file
-	configPath := filepath.Join("/tmp/otel-configs", fmt.Sprintf("%s.yaml", collectorID))
+	containerConfigDir := os.Getenv("OTEL_CONFIGS_DIR")
+	if containerConfigDir == "" {
+		containerConfigDir = "/tmp/otel-configs"
+	}
+	configPath := filepath.Join(containerConfigDir, fmt.Sprintf("%s.yaml", collectorID))
 	_ = os.Remove(configPath)
 
 	return nil
 }
 
-// List lists all running collector containers
+// List lists all collector containers (including stopped/exited ones)
 func (d *DockerDeployer) List() ([]CollectorInfo, error) {
-	// List all otel-collector-* containers
+	// List all otel-collector-* containers (including stopped ones with -a)
 	args := []string{
 		"ps",
+		"-a", // Show all containers, including stopped ones
 		"--filter", "name=otel-collector-",
 		"--format", "{{.Names}},{{.Status}},{{.CreatedAt}}",
 	}
@@ -179,13 +251,20 @@ func (d *DockerDeployer) List() ([]CollectorInfo, error) {
 			deployedAt = time.Now() // Fallback
 		}
 
+		// Get config path using the same logic as deployment
+		containerConfigDir := os.Getenv("OTEL_CONFIGS_DIR")
+		if containerConfigDir == "" {
+			containerConfigDir = "/tmp/otel-configs"
+		}
+		configPath := filepath.Join(containerConfigDir, fmt.Sprintf("%s.yaml", collectorID))
+
 		collectors = append(collectors, CollectorInfo{
-			CollectorID:  collectorID,
+			CollectorID:   collectorID,
 			CollectorName: collectorID,
 			TargetType:    string(TargetDocker),
 			Status:        status,
 			DeployedAt:    deployedAt,
-			ConfigPath:    fmt.Sprintf("/tmp/otel-configs/%s.yaml", collectorID),
+			ConfigPath:    configPath,
 		})
 	}
 
@@ -211,4 +290,3 @@ func (d *DockerDeployer) getContainerLogs(containerName string) (string, error) 
 	}
 	return string(output), nil
 }
-

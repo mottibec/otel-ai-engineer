@@ -9,6 +9,7 @@ import (
 	"github.com/mottibechhofer/otel-ai-engineer/agent/events"
 	"github.com/mottibechhofer/otel-ai-engineer/config"
 	"github.com/mottibechhofer/otel-ai-engineer/server/storage"
+	"github.com/mottibechhofer/otel-ai-engineer/tools"
 )
 
 // AgentInfo contains metadata about an agent type
@@ -148,12 +149,78 @@ func (r *Registry) registerBuiltInAgents() {
 		backendAgent.eventEmitter = emitter
 		return backendAgent.Agent, nil
 	})
+
+	// Register SandboxAgent
+	r.Register(AgentInfo{
+		ID:          "sandbox",
+		Name:        "Sandbox Agent",
+		Description: "Specialized agent for testing OpenTelemetry collector configurations in isolated sandbox environments",
+		Model:       string(anthropic.ModelClaudeSonnet4_5_20250929),
+	}, func(client *anthropic.Client, logLevel config.LogLevel, emitter events.EventEmitter) (*Agent, error) {
+		sandboxAgent, err := NewSandboxAgent(client, logLevel)
+		if err != nil {
+			return nil, err
+		}
+		sandboxAgent.eventEmitter = emitter
+		return sandboxAgent.Agent, nil
+	})
 }
 
 // Register adds a new agent type to the registry
 func (r *Registry) Register(info AgentInfo, factory AgentFactory) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	r.agents[info.ID] = info
+	r.factories[info.ID] = factory
+}
+
+// RegisterCustomAgent registers a custom agent with tool names
+// This creates a factory that will load tools by name at agent creation time
+func (r *Registry) RegisterCustomAgent(
+	info AgentInfo,
+	toolNames []string,
+	systemPrompt string,
+	maxTokens int64,
+	getToolsByName func(toolNames []string) []tools.Tool,
+) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// Create factory that loads tools by name
+	factory := func(client *anthropic.Client, logLevel config.LogLevel, emitter events.EventEmitter) (*Agent, error) {
+		// Get tools by name
+		agentTools := getToolsByName(toolNames)
+
+		// Parse model
+		var model anthropic.Model
+		if info.Model != "" {
+			model = anthropic.Model(info.Model)
+		} else {
+			model = anthropic.ModelClaudeSonnet4_5_20250929
+		}
+
+		// Use provided maxTokens or default
+		tokenLimit := maxTokens
+		if tokenLimit == 0 {
+			tokenLimit = 4096
+		}
+
+		// Create agent
+		agent := NewAgent(Config{
+			Name:         info.Name,
+			Description:  info.Description,
+			Client:       client,
+			Model:        model,
+			MaxTokens:    tokenLimit,
+			SystemPrompt: systemPrompt,
+			LogLevel:     logLevel,
+			EventEmitter: emitter,
+			Tools:        agentTools,
+		})
+
+		return agent, nil
+	}
 
 	r.agents[info.ID] = info
 	r.factories[info.ID] = factory
@@ -235,6 +302,44 @@ func (r *Registry) RunAgent(ctx context.Context, cfg RunnerConfig) (*RunResult, 
 		}
 		handoffTool := CreateHandoffTool(handoffCtx)
 		agent.registry.RegisterTool(handoffTool)
+	}
+
+	// Enable human input tool if storage is provided
+	if cfg.Storage != nil && cfg.RunID != "" {
+		// Extract resource context from agent work if available
+		var resourceType *storage.ResourceType
+		var resourceID *string
+		var agentWorkID *string
+
+		// Try to find agent work for this run
+		works, err := cfg.Storage.ListAgentWork(storage.AgentWorkListOptions{
+			Limit:  10,
+			Offset: 0,
+		})
+		if err == nil {
+			for _, work := range works {
+				if work.RunID == cfg.RunID {
+					resourceType = &work.ResourceType
+					resourceID = &work.ResourceID
+					workID := work.ID
+					agentWorkID = &workID
+					break
+				}
+			}
+		}
+
+		humanInputCtx := &HumanInputContext{
+			RunID:        cfg.RunID,
+			AgentID:      cfg.AgentID,
+			AgentName:    agent.GetName(),
+			Storage:      cfg.Storage,
+			EventEmitter: cfg.EventEmitter,
+			ResourceType: resourceType,
+			ResourceID:   resourceID,
+			AgentWorkID:  agentWorkID,
+		}
+		humanInputTool := CreateHumanInputTool(humanInputCtx)
+		agent.registry.RegisterTool(humanInputTool)
 	}
 
 	// If RunID is provided (resuming) or we have both history and pending messages,

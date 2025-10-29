@@ -148,17 +148,7 @@ func (s *Server) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// HandleListAgents handles GET /api/agents
-func (s *Server) HandleListAgents(w http.ResponseWriter, r *http.Request) {
-	if s.agentRegistry == nil {
-		http.Error(w, "Agent registry not initialized", http.StatusInternalServerError)
-		return
-	}
-
-	agents := s.agentRegistry.List()
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(agents)
-}
+// HandleListAgents is now in api_agents.go
 
 // CreateRunRequest represents the request body for creating a new run
 type CreateRunRequest struct {

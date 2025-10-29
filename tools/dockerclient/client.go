@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -37,30 +39,103 @@ func (c *Client) GetClient() *client.Client {
 }
 
 // EnsureNetwork ensures a Docker network exists, creating it if necessary
+// It handles various edge cases including:
+// - Network already exists (returns success)
+// - Network created concurrently by another process (handles gracefully)
+// - Docker Compose prefixed network names
+// - Falls back to CLI if API fails
 func (c *Client) EnsureNetwork(ctx context.Context, networkName string) error {
-	// Check if network exists
-	networkListOptions := network.ListOptions{
-		Filters: filters.NewArgs(filters.Arg("name", networkName)),
+	// Try API-based approach first
+	err := c.ensureNetworkViaAPI(ctx, networkName)
+	if err == nil {
+		return nil
 	}
 
-	networks, err := c.cli.NetworkList(ctx, networkListOptions)
+	// If API fails, try CLI fallback
+	return c.ensureNetworkViaCLI(ctx, networkName, err)
+}
+
+// ensureNetworkViaAPI uses the Docker API to ensure network exists
+func (c *Client) ensureNetworkViaAPI(ctx context.Context, networkName string) error {
+	// List all networks to check for existence (including Compose-prefixed ones)
+	networkListOptions := network.ListOptions{}
+	allNetworks, err := c.cli.NetworkList(ctx, networkListOptions)
 	if err != nil {
 		return fmt.Errorf("failed to list networks: %w", err)
 	}
 
-	// Network exists
-	if len(networks) > 0 {
-		return nil
+	// Check if network exists (exact match or ends with network name)
+	for _, net := range allNetworks {
+		if net.Name == networkName {
+			return nil // Network exists
+		}
+		// Handle Docker Compose prefixed networks (e.g., "project_otel-network")
+		if strings.HasSuffix(net.Name, "_"+networkName) || strings.HasSuffix(net.Name, "-"+networkName) {
+			return nil // Network exists with prefix
+		}
 	}
 
-	// Create network
+	// Network doesn't exist, create it
 	networkOptions := network.CreateOptions{
 		Driver: "bridge",
+		Labels: map[string]string{
+			"com.docker.compose.project": "otel-ai-engineer",
+		},
 	}
 
 	_, err = c.cli.NetworkCreate(ctx, networkName, networkOptions)
 	if err != nil {
+		// Check if error is because network was created concurrently
+		if strings.Contains(err.Error(), "already exists") || strings.Contains(err.Error(), "network with name") {
+			// Network was created by another process, verify it exists now
+			time.Sleep(100 * time.Millisecond) // Brief wait for network to be available
+			return c.verifyNetworkExists(ctx, networkName)
+		}
 		return fmt.Errorf("failed to create network: %w", err)
+	}
+
+	return nil
+}
+
+// verifyNetworkExists verifies that a network exists after a potential race condition
+func (c *Client) verifyNetworkExists(ctx context.Context, networkName string) error {
+	// Retry a few times with short delays
+	for i := 0; i < 5; i++ {
+		networkListOptions := network.ListOptions{}
+		allNetworks, err := c.cli.NetworkList(ctx, networkListOptions)
+		if err == nil {
+			for _, net := range allNetworks {
+				if net.Name == networkName {
+					return nil
+				}
+				if strings.HasSuffix(net.Name, "_"+networkName) || strings.HasSuffix(net.Name, "-"+networkName) {
+					return nil
+				}
+			}
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return fmt.Errorf("network %s not found after creation", networkName)
+}
+
+// ensureNetworkViaCLI uses Docker CLI as a fallback when API fails
+func (c *Client) ensureNetworkViaCLI(ctx context.Context, networkName string, apiErr error) error {
+	// Check if network exists via CLI
+	checkCmd := exec.CommandContext(ctx, "docker", "network", "inspect", networkName)
+	if err := checkCmd.Run(); err == nil {
+		// Network exists via CLI check
+		return nil
+	}
+
+	// Network doesn't exist, create it via CLI
+	createCmd := exec.CommandContext(ctx, "docker", "network", "create", "--driver", "bridge", networkName)
+	output, err := createCmd.CombinedOutput()
+	if err != nil {
+		// Check if network was created concurrently
+		if strings.Contains(string(output), "already exists") {
+			return nil // Network exists, success
+		}
+		return fmt.Errorf("API error: %w; CLI fallback also failed: %s", apiErr, string(output))
 	}
 
 	return nil

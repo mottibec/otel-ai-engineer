@@ -281,6 +281,51 @@ func (m *MockStorage) DeleteDependency(depID string) error {
 	return fmt.Errorf("not implemented in MockStorage")
 }
 
+// Agent work management methods
+func (m *MockStorage) CreateAgentWork(work *storage.AgentWork) error {
+	return fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) GetAgentWork(workID string) (*storage.AgentWork, error) {
+	return nil, fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) GetAgentWorkByResource(resourceType storage.ResourceType, resourceID string) ([]*storage.AgentWork, error) {
+	return nil, fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) ListAgentWork(opts storage.AgentWorkListOptions) ([]*storage.AgentWork, error) {
+	return nil, fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) UpdateAgentWork(workID string, update *storage.AgentWorkUpdate) error {
+	return fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) DeleteAgentWork(workID string) error {
+	return fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) CreateCustomAgent(agent *storage.CustomAgent) error {
+	return fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) GetCustomAgent(agentID string) (*storage.CustomAgent, error) {
+	return nil, fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) ListCustomAgents() ([]*storage.CustomAgent, error) {
+	return nil, fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) UpdateCustomAgent(agentID string, update *storage.CustomAgentUpdate) error {
+	return fmt.Errorf("not implemented in MockStorage")
+}
+
+func (m *MockStorage) DeleteCustomAgent(agentID string) error {
+	return fmt.Errorf("not implemented in MockStorage")
+}
+
 // TestEventBridgeCreation verifies EventBridge is created correctly
 func TestEventBridgeCreation(t *testing.T) {
 	stor := NewMockStorage()

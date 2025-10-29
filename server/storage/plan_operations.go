@@ -178,11 +178,11 @@ func (s *SQLiteStorage) CreateService(service *InstrumentedService) error {
 	_, err := s.db.Exec(
 		`INSERT INTO instrumented_services 
 		 (id, plan_id, service_name, language, framework, sdk_version, config_file, status, 
-		  code_changes_summary, target_path, exporter_endpoint, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		  code_changes_summary, target_path, exporter_endpoint, git_repo_url, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		service.ID, service.PlanID, service.ServiceName, service.Language, service.Framework,
 		service.SDKVersion, service.ConfigFile, service.Status, service.CodeChangesSummary,
-		service.TargetPath, service.ExporterEndpoint, service.CreatedAt, service.UpdatedAt)
+		service.TargetPath, service.ExporterEndpoint, service.GitRepoURL, service.CreatedAt, service.UpdatedAt)
 
 	if err != nil {
 		return fmt.Errorf("failed to insert service: %w", err)
@@ -197,7 +197,7 @@ func (s *SQLiteStorage) GetService(serviceID string) (*InstrumentedService, erro
 
 	row := s.db.QueryRow(
 		`SELECT id, plan_id, service_name, language, framework, sdk_version, config_file, status,
-		 code_changes_summary, target_path, exporter_endpoint, created_at, updated_at
+		 code_changes_summary, target_path, exporter_endpoint, git_repo_url, created_at, updated_at
 		 FROM instrumented_services WHERE id = ?`,
 		serviceID)
 
@@ -205,7 +205,7 @@ func (s *SQLiteStorage) GetService(serviceID string) (*InstrumentedService, erro
 	err := row.Scan(
 		&service.ID, &service.PlanID, &service.ServiceName, &service.Language, &service.Framework,
 		&service.SDKVersion, &service.ConfigFile, &service.Status, &service.CodeChangesSummary,
-		&service.TargetPath, &service.ExporterEndpoint, &service.CreatedAt, &service.UpdatedAt)
+		&service.TargetPath, &service.ExporterEndpoint, &service.GitRepoURL, &service.CreatedAt, &service.UpdatedAt)
 
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("service with ID %s not found", serviceID)
@@ -223,7 +223,7 @@ func (s *SQLiteStorage) GetServicesByPlan(planID string) ([]*InstrumentedService
 
 	rows, err := s.db.Query(
 		`SELECT id, plan_id, service_name, language, framework, sdk_version, config_file, status,
-		 code_changes_summary, target_path, exporter_endpoint, created_at, updated_at
+		 code_changes_summary, target_path, exporter_endpoint, git_repo_url, created_at, updated_at
 		 FROM instrumented_services WHERE plan_id = ? ORDER BY created_at ASC`,
 		planID)
 	if err != nil {
@@ -237,7 +237,7 @@ func (s *SQLiteStorage) GetServicesByPlan(planID string) ([]*InstrumentedService
 		err := rows.Scan(
 			&service.ID, &service.PlanID, &service.ServiceName, &service.Language, &service.Framework,
 			&service.SDKVersion, &service.ConfigFile, &service.Status, &service.CodeChangesSummary,
-			&service.TargetPath, &service.ExporterEndpoint, &service.CreatedAt, &service.UpdatedAt)
+			&service.TargetPath, &service.ExporterEndpoint, &service.GitRepoURL, &service.CreatedAt, &service.UpdatedAt)
 
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan service: %w", err)
@@ -260,11 +260,11 @@ func (s *SQLiteStorage) UpdateService(serviceID string, service *InstrumentedSer
 		`UPDATE instrumented_services SET 
 		 plan_id = ?, service_name = ?, language = ?, framework = ?, sdk_version = ?, 
 		 config_file = ?, status = ?, code_changes_summary = ?, target_path = ?, 
-		 exporter_endpoint = ?, updated_at = ?
+		 exporter_endpoint = ?, git_repo_url = ?, updated_at = ?
 		 WHERE id = ?`,
 		service.PlanID, service.ServiceName, service.Language, service.Framework, service.SDKVersion,
 		service.ConfigFile, service.Status, service.CodeChangesSummary, service.TargetPath,
-		service.ExporterEndpoint, time.Now(), serviceID)
+		service.ExporterEndpoint, service.GitRepoURL, time.Now(), serviceID)
 
 	if err != nil {
 		return fmt.Errorf("failed to update service: %w", err)
@@ -516,11 +516,17 @@ func (s *SQLiteStorage) CreateBackend(backend *Backend) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	var planID sql.NullString
+	if backend.PlanID != nil && *backend.PlanID != "" {
+		planID.String = *backend.PlanID
+		planID.Valid = true
+	}
+
 	_, err := s.db.Exec(
 		`INSERT INTO backends 
 		 (id, plan_id, backend_type, name, url, credentials, health_status, last_check, datasource_uid, config, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		backend.ID, backend.PlanID, backend.BackendType, backend.Name, backend.URL, backend.Credentials,
+		backend.ID, planID, backend.BackendType, backend.Name, backend.URL, backend.Credentials,
 		backend.HealthStatus, backend.LastCheck, backend.DatasourceUID, backend.Config, backend.CreatedAt, backend.UpdatedAt)
 
 	if err != nil {
@@ -540,9 +546,10 @@ func (s *SQLiteStorage) GetBackend(backendID string) (*Backend, error) {
 		backendID)
 
 	var backend Backend
+	var planID sql.NullString
 	var lastCheck sql.NullTime
 	err := row.Scan(
-		&backend.ID, &backend.PlanID, &backend.BackendType, &backend.Name, &backend.URL, &backend.Credentials,
+		&backend.ID, &planID, &backend.BackendType, &backend.Name, &backend.URL, &backend.Credentials,
 		&backend.HealthStatus, &lastCheck, &backend.DatasourceUID, &backend.Config, &backend.CreatedAt, &backend.UpdatedAt)
 
 	if err == sql.ErrNoRows {
@@ -550,6 +557,10 @@ func (s *SQLiteStorage) GetBackend(backendID string) (*Backend, error) {
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to scan backend: %w", err)
+	}
+
+	if planID.Valid && planID.String != "" {
+		backend.PlanID = &planID.String
 	}
 
 	if lastCheck.Valid {
@@ -575,13 +586,61 @@ func (s *SQLiteStorage) GetBackendsByPlan(planID string) ([]*Backend, error) {
 	backends := []*Backend{}
 	for rows.Next() {
 		var backend Backend
+		var planIDVal sql.NullString
 		var lastCheck sql.NullTime
 		err := rows.Scan(
-			&backend.ID, &backend.PlanID, &backend.BackendType, &backend.Name, &backend.URL, &backend.Credentials,
+			&backend.ID, &planIDVal, &backend.BackendType, &backend.Name, &backend.URL, &backend.Credentials,
 			&backend.HealthStatus, &lastCheck, &backend.DatasourceUID, &backend.Config, &backend.CreatedAt, &backend.UpdatedAt)
 
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan backend: %w", err)
+		}
+
+		if planIDVal.Valid && planIDVal.String != "" {
+			backend.PlanID = &planIDVal.String
+		}
+
+		if lastCheck.Valid {
+			backend.LastCheck = &lastCheck.Time
+		}
+
+		backends = append(backends, &backend)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate backends: %w", err)
+	}
+
+	return backends, nil
+}
+
+func (s *SQLiteStorage) ListAllBackends() ([]*Backend, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	rows, err := s.db.Query(
+		`SELECT id, plan_id, backend_type, name, url, credentials, health_status, last_check, datasource_uid, config, created_at, updated_at
+		 FROM backends ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query backends: %w", err)
+	}
+	defer rows.Close()
+
+	backends := []*Backend{}
+	for rows.Next() {
+		var backend Backend
+		var planIDVal sql.NullString
+		var lastCheck sql.NullTime
+		err := rows.Scan(
+			&backend.ID, &planIDVal, &backend.BackendType, &backend.Name, &backend.URL, &backend.Credentials,
+			&backend.HealthStatus, &lastCheck, &backend.DatasourceUID, &backend.Config, &backend.CreatedAt, &backend.UpdatedAt)
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan backend: %w", err)
+		}
+
+		if planIDVal.Valid && planIDVal.String != "" {
+			backend.PlanID = &planIDVal.String
 		}
 
 		if lastCheck.Valid {
@@ -602,12 +661,18 @@ func (s *SQLiteStorage) UpdateBackend(backendID string, backend *Backend) error 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	var planID sql.NullString
+	if backend.PlanID != nil && *backend.PlanID != "" {
+		planID.String = *backend.PlanID
+		planID.Valid = true
+	}
+
 	_, err := s.db.Exec(
 		`UPDATE backends SET 
 		 plan_id = ?, backend_type = ?, name = ?, url = ?, credentials = ?, health_status = ?, 
 		 last_check = ?, datasource_uid = ?, config = ?, updated_at = ?
 		 WHERE id = ?`,
-		backend.PlanID, backend.BackendType, backend.Name, backend.URL, backend.Credentials,
+		planID, backend.BackendType, backend.Name, backend.URL, backend.Credentials,
 		backend.HealthStatus, backend.LastCheck, backend.DatasourceUID, backend.Config, time.Now(), backendID)
 
 	if err != nil {

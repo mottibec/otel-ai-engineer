@@ -20,7 +20,7 @@ export function Layout({ sidebar, children }: LayoutProps) {
     >
       {sidebar}
       <SidebarInset className="flex-1 overflow-hidden">
-        <div className="flex-1 h-screen min-h-0 overflow-auto">
+        <div className="flex-1 min-h-0 overflow-auto">
           {children}
         </div>
       </SidebarInset>

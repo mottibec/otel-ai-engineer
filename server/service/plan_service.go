@@ -178,11 +178,17 @@ func (ps *PlanService) calculateAggregatedStatus(plan *storage.ObservabilityPlan
 	return storage.PlanStatusPending
 }
 
-// AddServiceToPlan adds a service to a plan
-func (ps *PlanService) AddServiceToPlan(ctx context.Context, service *storage.InstrumentedService) error {
-	if service == nil {
-		return fmt.Errorf("service cannot be nil")
+// CreateService creates a service and adds it to a plan
+func (ps *PlanService) CreateService(ctx context.Context, planID string, service *storage.InstrumentedService) (*storage.InstrumentedService, error) {
+	if planID == "" {
+		return nil, fmt.Errorf("plan ID cannot be empty")
 	}
+	if service == nil {
+		return nil, fmt.Errorf("service cannot be nil")
+	}
+
+	// Ensure plan_id matches
+	service.PlanID = planID
 	if service.ID == "" {
 		service.ID = fmt.Sprintf("service-%d", time.Now().UnixNano())
 	}
@@ -196,14 +202,74 @@ func (ps *PlanService) AddServiceToPlan(ctx context.Context, service *storage.In
 		service.Status = "pending"
 	}
 
-	return ps.storage.CreateService(service)
+	if err := ps.storage.CreateService(service); err != nil {
+		return nil, fmt.Errorf("failed to create service: %w", err)
+	}
+
+	return service, nil
 }
 
-// AddInfrastructureToPlan adds infrastructure to a plan
-func (ps *PlanService) AddInfrastructureToPlan(ctx context.Context, infra *storage.InfrastructureComponent) error {
-	if infra == nil {
-		return fmt.Errorf("infrastructure component cannot be nil")
+// UpdateService updates a service
+func (ps *PlanService) UpdateService(ctx context.Context, planID, serviceID string, service *storage.InstrumentedService) error {
+	if planID == "" {
+		return fmt.Errorf("plan ID cannot be empty")
 	}
+	if serviceID == "" {
+		return fmt.Errorf("service ID cannot be empty")
+	}
+	if service == nil {
+		return fmt.Errorf("service cannot be nil")
+	}
+
+	// Ensure IDs match
+	service.ID = serviceID
+	service.PlanID = planID
+	service.UpdatedAt = time.Now()
+
+	if err := ps.storage.UpdateService(serviceID, service); err != nil {
+		return fmt.Errorf("failed to update service: %w", err)
+	}
+
+	return nil
+}
+
+// DeleteService deletes a service
+func (ps *PlanService) DeleteService(ctx context.Context, serviceID string) error {
+	if serviceID == "" {
+		return fmt.Errorf("service ID cannot be empty")
+	}
+
+	if err := ps.storage.DeleteService(serviceID); err != nil {
+		return fmt.Errorf("failed to delete service: %w", err)
+	}
+
+	return nil
+}
+
+// AddServiceToPlan adds a service to a plan (legacy method, forwards to CreateService)
+func (ps *PlanService) AddServiceToPlan(ctx context.Context, service *storage.InstrumentedService) error {
+	if service == nil {
+		return fmt.Errorf("service cannot be nil")
+	}
+	if service.PlanID == "" {
+		return fmt.Errorf("plan ID cannot be empty")
+	}
+
+	_, err := ps.CreateService(ctx, service.PlanID, service)
+	return err
+}
+
+// CreateInfrastructure creates an infrastructure component and adds it to a plan
+func (ps *PlanService) CreateInfrastructure(ctx context.Context, planID string, infra *storage.InfrastructureComponent) (*storage.InfrastructureComponent, error) {
+	if planID == "" {
+		return nil, fmt.Errorf("plan ID cannot be empty")
+	}
+	if infra == nil {
+		return nil, fmt.Errorf("infrastructure component cannot be nil")
+	}
+
+	// Ensure plan_id matches
+	infra.PlanID = planID
 	if infra.ID == "" {
 		infra.ID = fmt.Sprintf("infra-%d", time.Now().UnixNano())
 	}
@@ -217,14 +283,74 @@ func (ps *PlanService) AddInfrastructureToPlan(ctx context.Context, infra *stora
 		infra.Status = "pending"
 	}
 
-	return ps.storage.CreateInfrastructure(infra)
+	if err := ps.storage.CreateInfrastructure(infra); err != nil {
+		return nil, fmt.Errorf("failed to create infrastructure: %w", err)
+	}
+
+	return infra, nil
 }
 
-// AddPipelineToPlan adds a pipeline to a plan
-func (ps *PlanService) AddPipelineToPlan(ctx context.Context, pipeline *storage.CollectorPipeline) error {
-	if pipeline == nil {
-		return fmt.Errorf("pipeline cannot be nil")
+// UpdateInfrastructure updates an infrastructure component
+func (ps *PlanService) UpdateInfrastructure(ctx context.Context, planID, infraID string, infra *storage.InfrastructureComponent) error {
+	if planID == "" {
+		return fmt.Errorf("plan ID cannot be empty")
 	}
+	if infraID == "" {
+		return fmt.Errorf("infrastructure ID cannot be empty")
+	}
+	if infra == nil {
+		return fmt.Errorf("infrastructure component cannot be nil")
+	}
+
+	// Ensure IDs match
+	infra.ID = infraID
+	infra.PlanID = planID
+	infra.UpdatedAt = time.Now()
+
+	if err := ps.storage.UpdateInfrastructure(infraID, infra); err != nil {
+		return fmt.Errorf("failed to update infrastructure: %w", err)
+	}
+
+	return nil
+}
+
+// DeleteInfrastructure deletes an infrastructure component
+func (ps *PlanService) DeleteInfrastructure(ctx context.Context, infraID string) error {
+	if infraID == "" {
+		return fmt.Errorf("infrastructure ID cannot be empty")
+	}
+
+	if err := ps.storage.DeleteInfrastructure(infraID); err != nil {
+		return fmt.Errorf("failed to delete infrastructure: %w", err)
+	}
+
+	return nil
+}
+
+// AddInfrastructureToPlan adds infrastructure to a plan (legacy method, forwards to CreateInfrastructure)
+func (ps *PlanService) AddInfrastructureToPlan(ctx context.Context, infra *storage.InfrastructureComponent) error {
+	if infra == nil {
+		return fmt.Errorf("infrastructure component cannot be nil")
+	}
+	if infra.PlanID == "" {
+		return fmt.Errorf("plan ID cannot be empty")
+	}
+
+	_, err := ps.CreateInfrastructure(ctx, infra.PlanID, infra)
+	return err
+}
+
+// CreatePipeline creates a pipeline and adds it to a plan
+func (ps *PlanService) CreatePipeline(ctx context.Context, planID string, pipeline *storage.CollectorPipeline) (*storage.CollectorPipeline, error) {
+	if planID == "" {
+		return nil, fmt.Errorf("plan ID cannot be empty")
+	}
+	if pipeline == nil {
+		return nil, fmt.Errorf("pipeline cannot be nil")
+	}
+
+	// Ensure plan_id matches
+	pipeline.PlanID = planID
 	if pipeline.ID == "" {
 		pipeline.ID = fmt.Sprintf("pipeline-%d", time.Now().UnixNano())
 	}
@@ -238,14 +364,74 @@ func (ps *PlanService) AddPipelineToPlan(ctx context.Context, pipeline *storage.
 		pipeline.Status = "pending"
 	}
 
-	return ps.storage.CreatePipeline(pipeline)
+	if err := ps.storage.CreatePipeline(pipeline); err != nil {
+		return nil, fmt.Errorf("failed to create pipeline: %w", err)
+	}
+
+	return pipeline, nil
 }
 
-// AddBackendToPlan adds a backend to a plan
-func (ps *PlanService) AddBackendToPlan(ctx context.Context, backend *storage.Backend) error {
-	if backend == nil {
-		return fmt.Errorf("backend cannot be nil")
+// UpdatePipeline updates a pipeline
+func (ps *PlanService) UpdatePipeline(ctx context.Context, planID, pipelineID string, pipeline *storage.CollectorPipeline) error {
+	if planID == "" {
+		return fmt.Errorf("plan ID cannot be empty")
 	}
+	if pipelineID == "" {
+		return fmt.Errorf("pipeline ID cannot be empty")
+	}
+	if pipeline == nil {
+		return fmt.Errorf("pipeline cannot be nil")
+	}
+
+	// Ensure IDs match
+	pipeline.ID = pipelineID
+	pipeline.PlanID = planID
+	pipeline.UpdatedAt = time.Now()
+
+	if err := ps.storage.UpdatePipeline(pipelineID, pipeline); err != nil {
+		return fmt.Errorf("failed to update pipeline: %w", err)
+	}
+
+	return nil
+}
+
+// DeletePipeline deletes a pipeline
+func (ps *PlanService) DeletePipeline(ctx context.Context, pipelineID string) error {
+	if pipelineID == "" {
+		return fmt.Errorf("pipeline ID cannot be empty")
+	}
+
+	if err := ps.storage.DeletePipeline(pipelineID); err != nil {
+		return fmt.Errorf("failed to delete pipeline: %w", err)
+	}
+
+	return nil
+}
+
+// AddPipelineToPlan adds a pipeline to a plan (legacy method, forwards to CreatePipeline)
+func (ps *PlanService) AddPipelineToPlan(ctx context.Context, pipeline *storage.CollectorPipeline) error {
+	if pipeline == nil {
+		return fmt.Errorf("pipeline cannot be nil")
+	}
+	if pipeline.PlanID == "" {
+		return fmt.Errorf("plan ID cannot be empty")
+	}
+
+	_, err := ps.CreatePipeline(ctx, pipeline.PlanID, pipeline)
+	return err
+}
+
+// CreatePlanBackend creates a backend and adds it to a plan
+func (ps *PlanService) CreatePlanBackend(ctx context.Context, planID string, backend *storage.Backend) (*storage.Backend, error) {
+	if planID == "" {
+		return nil, fmt.Errorf("plan ID cannot be empty")
+	}
+	if backend == nil {
+		return nil, fmt.Errorf("backend cannot be nil")
+	}
+
+	// Ensure plan_id matches
+	backend.PlanID = &planID
 	if backend.ID == "" {
 		backend.ID = fmt.Sprintf("backend-%d", time.Now().UnixNano())
 	}
@@ -259,7 +445,87 @@ func (ps *PlanService) AddBackendToPlan(ctx context.Context, backend *storage.Ba
 		backend.HealthStatus = "unknown"
 	}
 
-	return ps.storage.CreateBackend(backend)
+	if err := ps.storage.CreateBackend(backend); err != nil {
+		return nil, fmt.Errorf("failed to create backend: %w", err)
+	}
+
+	return backend, nil
+}
+
+// UpdatePlanBackend updates a backend in a plan
+func (ps *PlanService) UpdatePlanBackend(ctx context.Context, planID, backendID string, backend *storage.Backend) error {
+	if planID == "" {
+		return fmt.Errorf("plan ID cannot be empty")
+	}
+	if backendID == "" {
+		return fmt.Errorf("backend ID cannot be empty")
+	}
+	if backend == nil {
+		return fmt.Errorf("backend cannot be nil")
+	}
+
+	// Ensure IDs match
+	backend.ID = backendID
+	backend.PlanID = &planID
+	backend.UpdatedAt = time.Now()
+
+	if err := ps.storage.UpdateBackend(backendID, backend); err != nil {
+		return fmt.Errorf("failed to update backend: %w", err)
+	}
+
+	return nil
+}
+
+// DeletePlanBackend deletes a backend from a plan
+func (ps *PlanService) DeletePlanBackend(ctx context.Context, backendID string) error {
+	if backendID == "" {
+		return fmt.Errorf("backend ID cannot be empty")
+	}
+
+	if err := ps.storage.DeleteBackend(backendID); err != nil {
+		return fmt.Errorf("failed to delete backend: %w", err)
+	}
+
+	return nil
+}
+
+// AttachBackendToPlan attaches an existing backend to a plan
+func (ps *PlanService) AttachBackendToPlan(ctx context.Context, planID, backendID string) error {
+	if planID == "" {
+		return fmt.Errorf("plan ID cannot be empty")
+	}
+	if backendID == "" {
+		return fmt.Errorf("backend ID cannot be empty")
+	}
+
+	// Get the backend
+	backend, err := ps.storage.GetBackend(backendID)
+	if err != nil {
+		return fmt.Errorf("failed to get backend: %w", err)
+	}
+
+	// Update plan_id
+	backend.PlanID = &planID
+	backend.UpdatedAt = time.Now()
+
+	if err := ps.storage.UpdateBackend(backendID, backend); err != nil {
+		return fmt.Errorf("failed to attach backend to plan: %w", err)
+	}
+
+	return nil
+}
+
+// AddBackendToPlan adds a backend to a plan (legacy method, forwards to CreatePlanBackend)
+func (ps *PlanService) AddBackendToPlan(ctx context.Context, backend *storage.Backend) error {
+	if backend == nil {
+		return fmt.Errorf("backend cannot be nil")
+	}
+	if backend.PlanID == nil || *backend.PlanID == "" {
+		return fmt.Errorf("plan ID cannot be empty")
+	}
+
+	_, err := ps.CreatePlanBackend(ctx, *backend.PlanID, backend)
+	return err
 }
 
 // AddDependencyToPlan adds a dependency relationship to a plan
