@@ -1,22 +1,33 @@
+import { useState } from "react";
 import { usePlan } from "../../hooks/usePlan";
 import { usePlanTopology } from "../../hooks/usePlanTopology";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Plus } from "lucide-react";
 import { ServiceCard } from "./ServiceCard";
 import { InfrastructureCard } from "./InfrastructureCard";
 import { PipelineCard } from "./PipelineCard";
 import { BackendCard } from "./BackendCard";
 import { TopologyGraph } from "./TopologyGraph";
+import { AddBackendModal } from "./AddBackendModal";
+import { AddCollectorModal } from "./AddCollectorModal";
+import { AddServiceModal } from "./AddServiceModal";
+import { AddInfrastructureModal } from "./AddInfrastructureModal";
 
 interface PlanDetailProps {
   planId: string;
 }
 
 export function PlanDetail({ planId }: PlanDetailProps) {
-  const { plan, loading, error } = usePlan(planId);
+  const { plan, loading, error, refreshPlan } = usePlan(planId);
   const { topology, loading: topologyLoading } = usePlanTopology(planId);
+  const [showAddBackend, setShowAddBackend] = useState(false);
+  const [showAddCollector, setShowAddCollector] = useState(false);
+  const [showAddService, setShowAddService] = useState(false);
+  const [showAddInfrastructure, setShowAddInfrastructure] = useState(false);
 
   if (loading) {
     return (
@@ -167,6 +178,13 @@ export function PlanDetail({ planId }: PlanDetailProps) {
 
         <TabsContent value="services">
           <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-semibold">Instrumented Services</h3>
+              <Button onClick={() => setShowAddService(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Service
+              </Button>
+            </div>
             {plan.services && plan.services.length > 0 ? (
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {plan.services.map((service) => (
@@ -185,6 +203,13 @@ export function PlanDetail({ planId }: PlanDetailProps) {
 
         <TabsContent value="infrastructure">
           <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-semibold">Infrastructure Components</h3>
+              <Button onClick={() => setShowAddInfrastructure(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Infrastructure
+              </Button>
+            </div>
             {plan.infrastructure && plan.infrastructure.length > 0 ? (
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {plan.infrastructure.map((infra) => (
@@ -203,6 +228,13 @@ export function PlanDetail({ planId }: PlanDetailProps) {
 
         <TabsContent value="pipelines">
           <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-semibold">Collector Pipelines</h3>
+              <Button onClick={() => setShowAddCollector(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Collector
+              </Button>
+            </div>
             {plan.pipelines && plan.pipelines.length > 0 ? (
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {plan.pipelines.map((pipeline) => (
@@ -221,6 +253,13 @@ export function PlanDetail({ planId }: PlanDetailProps) {
 
         <TabsContent value="backends">
           <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-semibold">Backends</h3>
+              <Button onClick={() => setShowAddBackend(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Backend
+              </Button>
+            </div>
             {plan.backends && plan.backends.length > 0 ? (
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {plan.backends.map((backend) => (
@@ -245,6 +284,47 @@ export function PlanDetail({ planId }: PlanDetailProps) {
           )}
         </TabsContent>
       </Tabs>
+
+      <AddBackendModal
+        isOpen={showAddBackend}
+        onClose={() => setShowAddBackend(false)}
+        planId={planId}
+        existingBackendIds={plan.backends?.map((b) => b.id) || []}
+        onBackendAdded={async () => {
+          await refreshPlan();
+          setShowAddBackend(false);
+        }}
+      />
+
+      <AddCollectorModal
+        isOpen={showAddCollector}
+        onClose={() => setShowAddCollector(false)}
+        planId={planId}
+        onCollectorAdded={async () => {
+          await refreshPlan();
+          setShowAddCollector(false);
+        }}
+      />
+
+      <AddServiceModal
+        isOpen={showAddService}
+        onClose={() => setShowAddService(false)}
+        planId={planId}
+        onServiceAdded={async () => {
+          await refreshPlan();
+          setShowAddService(false);
+        }}
+      />
+
+      <AddInfrastructureModal
+        isOpen={showAddInfrastructure}
+        onClose={() => setShowAddInfrastructure(false)}
+        planId={planId}
+        onInfrastructureAdded={async () => {
+          await refreshPlan();
+          setShowAddInfrastructure(false);
+        }}
+      />
     </div>
   );
 }

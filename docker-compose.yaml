@@ -14,6 +14,7 @@ services:
       - ./agent:/app/agent
       - ./server:/app/server
       - ./tools:/app/tools
+      - ./sandbox:/app/sandbox
       - ./otelclient:/app/otelclient
       - ./grafanaclient:/app/grafanaclient
       - ./config:/app/config
@@ -29,6 +30,10 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # Persist database between runs
       - ./data:/app/data
+      # Shared volume for sandbox configurations (accessible from host Docker daemon)
+      - ./sandbox-configs:/sandbox-configs
+      # Shared volume for OTEL collector configurations (accessible from host Docker daemon)
+      - ./otel-configs:/otel-configs
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - LAWRENCE_API_URL=http://lawrence:8080
@@ -36,6 +41,10 @@ services:
       - CGO_ENABLED=1
       - TZ=UTC
       - DB_PATH=/app/data/otel-ai-engineer.db
+      - SANDBOX_CONFIGS_DIR=/sandbox-configs
+      - SANDBOX_CONFIGS_HOST_PATH=/Users/mottibechhofer/sources/lawrence/otel-ai-engineer/sandbox-configs
+      - OTEL_CONFIGS_DIR=/otel-configs
+      - OTEL_CONFIGS_HOST_PATH=/Users/mottibechhofer/sources/lawrence/otel-ai-engineer/otel-configs
     depends_on:
       - lawrence
     restart: unless-stopped

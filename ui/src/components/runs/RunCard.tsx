@@ -6,17 +6,17 @@ import {
   formatNumber,
 } from "../../utils/formatters";
 import { cn } from "@/lib/utils";
+import { Link } from "react-router-dom";
 
 interface RunCardProps {
   run: Run;
-  onClick: () => void;
+  onClick?: () => void;
   isActive?: boolean;
 }
 
 export function RunCard({ run, onClick, isActive = false }: RunCardProps) {
-  return (
+  const content = (
     <div
-      onClick={onClick}
       className={cn(
         "px-3 py-2 cursor-pointer transition-colors hover:bg-accent/50 border-b border-border/50",
         isActive && "bg-accent/70 border-l-2 border-l-primary",
@@ -52,5 +52,19 @@ export function RunCard({ run, onClick, isActive = false }: RunCardProps) {
         </span>
       </div>
     </div>
+  );
+
+  if (onClick) {
+    return (
+      <div onClick={onClick}>
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <Link to={`/runs/${run.id}`}>
+      {content}
+    </Link>
   );
 }

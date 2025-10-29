@@ -191,6 +191,7 @@ type InstrumentedService struct {
 	CodeChangesSummary  string    `json:"code_changes_summary"`
 	TargetPath          string    `json:"target_path"`
 	ExporterEndpoint    string    `json:"exporter_endpoint"`
+	GitRepoURL          string    `json:"git_repo_url,omitempty"` // Git repository URL for source code
 	CreatedAt           time.Time `json:"created_at"`
 	UpdatedAt           time.Time `json:"updated_at"`
 }
@@ -227,15 +228,15 @@ type CollectorPipeline struct {
 // Backend represents an observability backend
 type Backend struct {
 	ID            string     `json:"id"`
-	PlanID        string     `json:"plan_id"`
-	BackendType   string     `json:"backend_type"` // "grafana", "prometheus", "jaeger", "custom"
+	PlanID        *string    `json:"plan_id,omitempty"` // Optional - can be nil for standalone backends
+	BackendType   string     `json:"backend_type"`      // "grafana", "prometheus", "jaeger", "custom"
 	Name          string     `json:"name"`
 	URL           string     `json:"url"`
-	Credentials   string     `json:"credentials"` // Encrypted credentials
-	HealthStatus  string     `json:"health_status"` // "healthy", "unhealthy", "unknown"
+	Credentials   string     `json:"credentials"`      // Encrypted credentials
+	HealthStatus  string     `json:"health_status"`     // "healthy", "unhealthy", "unknown"
 	LastCheck     *time.Time `json:"last_check,omitempty"`
 	DatasourceUID string     `json:"datasource_uid,omitempty"` // For Grafana datasources
-	Config        string     `json:"config,omitempty"` // Additional configuration JSON
+	Config        string     `json:"config,omitempty"`          // Additional configuration JSON
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
 }
@@ -258,4 +259,130 @@ type PlanUpdate struct {
 	Description *string
 	Environment *string
 	Status      *PlanStatus
+}
+
+// AgentWorkStatus represents the status of agent work on a resource
+type AgentWorkStatus string
+
+const (
+	AgentWorkStatusRunning   AgentWorkStatus = "running"
+	AgentWorkStatusCompleted AgentWorkStatus = "completed"
+	AgentWorkStatusFailed    AgentWorkStatus = "failed"
+	AgentWorkStatusCancelled AgentWorkStatus = "cancelled"
+)
+
+// ResourceType represents the type of resource an agent can work on
+type ResourceType string
+
+const (
+	ResourceTypeCollector    ResourceType = "collector"
+	ResourceTypeBackend      ResourceType = "backend"
+	ResourceTypeService      ResourceType = "service"
+	ResourceTypeInfrastructure ResourceType = "infrastructure"
+	ResourceTypePipeline     ResourceType = "pipeline"
+	ResourceTypePlan         ResourceType = "plan"
+)
+
+// AgentWork represents agent work on a specific resource
+type AgentWork struct {
+	ID             string          `json:"id"`
+	ResourceType   ResourceType    `json:"resource_type"`
+	ResourceID     string          `json:"resource_id"`
+	RunID          string          `json:"run_id"`
+	AgentID        string          `json:"agent_id"`
+	AgentName      string          `json:"agent_name"`
+	TaskDescription string         `json:"task_description"`
+	Status         AgentWorkStatus `json:"status"`
+	StartedAt      time.Time       `json:"started_at"`
+	CompletedAt    *time.Time      `json:"completed_at,omitempty"`
+	Error          string         `json:"error,omitempty"`
+	CreatedAt      time.Time       `json:"created_at"`
+	UpdatedAt      time.Time       `json:"updated_at"`
+}
+
+// AgentWorkUpdate contains fields that can be updated on agent work
+type AgentWorkUpdate struct {
+	Status      *AgentWorkStatus
+	CompletedAt *time.Time
+	Error       *string
+}
+
+// AgentWorkListOptions contains options for listing agent work
+type AgentWorkListOptions struct {
+	Limit        int
+	Offset       int
+	ResourceType *ResourceType
+	ResourceID   *string
+	Status       *AgentWorkStatus
+}
+
+// HumanActionStatus represents the status of a human action request
+type HumanActionStatus string
+
+const (
+	HumanActionStatusPending  HumanActionStatus = "pending"
+	HumanActionStatusResponded HumanActionStatus = "responded"
+	HumanActionStatusResumed   HumanActionStatus = "resumed"
+	HumanActionStatusCancelled HumanActionStatus = "cancelled"
+)
+
+// HumanAction represents a request from an agent for human intervention
+type HumanAction struct {
+	ID              string             `json:"id"`
+	RunID           string             `json:"run_id"`
+	AgentID         string             `json:"agent_id"`
+	AgentName       string             `json:"agent_name"`
+	ResourceType    *ResourceType      `json:"resource_type,omitempty"`
+	ResourceID      *string            `json:"resource_id,omitempty"`
+	AgentWorkID     *string            `json:"agent_work_id,omitempty"`
+	RequestType     string             `json:"request_type"` // "approval", "input", "decision", "information"
+	Question        string             `json:"question"`     // The question or request for the human
+	Context         string             `json:"context"`      // Additional context about the request
+	Options         []string           `json:"options,omitempty"` // Optional: predefined options/choices
+	Status          HumanActionStatus  `json:"status"`
+	Response        *string            `json:"response,omitempty"` // Human's response
+	RespondedAt     *time.Time         `json:"responded_at,omitempty"`
+	ResumedAt       *time.Time         `json:"resumed_at,omitempty"`
+	CreatedAt       time.Time          `json:"created_at"`
+	UpdatedAt       time.Time          `json:"updated_at"`
+}
+
+// HumanActionUpdate contains fields that can be updated on a human action
+type HumanActionUpdate struct {
+	Status      *HumanActionStatus
+	Response    *string
+	RespondedAt *time.Time
+	ResumedAt   *time.Time
+}
+
+// HumanActionListOptions contains options for listing human actions
+type HumanActionListOptions struct {
+	Limit      int
+	Offset     int
+	RunID      *string
+	Status     *HumanActionStatus
+	RequestType *string
+}
+
+// CustomAgent represents a user-created agent with custom tool configuration
+type CustomAgent struct {
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	Description  string    `json:"description"`
+	SystemPrompt string    `json:"system_prompt,omitempty"`
+	Model        string    `json:"model,omitempty"`
+	MaxTokens    int64     `json:"max_tokens,omitempty"`
+	ToolNames    []string  `json:"tool_names"` // Array of tool name strings
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+// CustomAgentUpdate contains fields that can be updated on a custom agent
+type CustomAgentUpdate struct {
+	Name         *string
+	Description  *string
+	SystemPrompt *string
+	Model        *string
+	MaxTokens    *int64
+	ToolNames    *[]string
 }

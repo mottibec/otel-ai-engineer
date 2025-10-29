@@ -27,6 +27,7 @@ export interface InstrumentedService {
   code_changes_summary: string;
   target_path: string;
   exporter_endpoint: string;
+  git_repo_url?: string;
   created_at: string;
   updated_at: string;
 }

@@ -54,7 +54,7 @@ RUN echo '[build]\n\
   full_bin = "./tmp/main ui"\n\
   include_ext = ["go"]\n\
   exclude_dir = ["tmp", "vendor", "ui", "node_modules", "dist"]\n\
-  include_dir = [".", "agent", "server", "tools", "config"]\n\
+  include_dir = [".", "agent", "server", "tools", "config", "sandbox"]\n\
   exclude_file = []\n\
   exclude_regex = ["_test.go"]\n\
   exclude_unchanged = false\n\

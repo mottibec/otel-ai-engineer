@@ -63,6 +63,7 @@ type Storage interface {
 	CreateBackend(backend *Backend) error
 	GetBackend(backendID string) (*Backend, error)
 	GetBackendsByPlan(planID string) ([]*Backend, error)
+	ListAllBackends() ([]*Backend, error)
 	UpdateBackend(backendID string, backend *Backend) error
 	DeleteBackend(backendID string) error
 
@@ -72,4 +73,28 @@ type Storage interface {
 	GetDependenciesBySource(sourceID string) ([]*PlanDependency, error)
 	GetDependenciesByTarget(targetID string) ([]*PlanDependency, error)
 	DeleteDependency(depID string) error
+
+	// Agent work management
+	CreateAgentWork(work *AgentWork) error
+	GetAgentWork(workID string) (*AgentWork, error)
+	GetAgentWorkByResource(resourceType ResourceType, resourceID string) ([]*AgentWork, error)
+	ListAgentWork(opts AgentWorkListOptions) ([]*AgentWork, error)
+	UpdateAgentWork(workID string, update *AgentWorkUpdate) error
+	DeleteAgentWork(workID string) error
+
+	// Human action management
+	CreateHumanAction(action *HumanAction) error
+	GetHumanAction(actionID string) (*HumanAction, error)
+	ListHumanActions(opts HumanActionListOptions) ([]*HumanAction, error)
+	UpdateHumanAction(actionID string, update *HumanActionUpdate) error
+	DeleteHumanAction(actionID string) error
+	GetHumanActionsByRun(runID string) ([]*HumanAction, error)
+	GetPendingHumanActions() ([]*HumanAction, error)
+
+	// Custom agent management
+	CreateCustomAgent(agent *CustomAgent) error
+	GetCustomAgent(agentID string) (*CustomAgent, error)
+	ListCustomAgents() ([]*CustomAgent, error)
+	UpdateCustomAgent(agentID string, update *CustomAgentUpdate) error
+	DeleteCustomAgent(agentID string) error
 }

@@ -1,14 +1,20 @@
 import { useRuns } from "../../hooks/useRuns";
 import { RunCard } from "./RunCard";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useLocation } from "react-router-dom";
 
 interface RunListProps {
   selectedRunId?: string;
-  onSelectRun: (runId: string) => void;
+  onSelectRun?: (runId: string) => void;
 }
 
 export function RunList({ selectedRunId, onSelectRun }: RunListProps) {
   const { runs, loading, error } = useRuns();
+  const location = useLocation();
+
+  // Extract runId from URL if available
+  const runsMatch = location.pathname.match(/^\/runs\/([^/]+)$/);
+  const activeRunId = runsMatch ? runsMatch[1] : selectedRunId;
 
   if (loading && runs.length === 0) {
     return (
@@ -38,8 +44,8 @@ export function RunList({ selectedRunId, onSelectRun }: RunListProps) {
         <RunCard
           key={run.id}
           run={run}
-          onClick={() => onSelectRun(run.id)}
-          isActive={run.id === selectedRunId}
+          onClick={onSelectRun ? () => onSelectRun(run.id) : undefined}
+          isActive={run.id === activeRunId}
         />
       ))}
     </ScrollArea>

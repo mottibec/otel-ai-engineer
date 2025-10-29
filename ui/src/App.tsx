@@ -1,79 +1,51 @@
-import { useState } from "react";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Layout } from "./components/layout/Layout";
 import { AgentSidebar } from "./components/layout/AgentSidebar";
-import { RunDetail } from "./components/detail/RunDetail";
-import { PlanList } from "./components/plans/PlanList";
-import { PlanDetail } from "./components/plans/PlanDetail";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-
-type ViewMode = "runs" | "plans";
+import { RunsPage } from "./pages/RunsPage";
+import { PlansPage } from "./pages/PlansPage";
+import { SandboxesPage } from "./pages/SandboxesPage";
+import { CollectorsPage } from "./pages/CollectorsPage";
+import { BackendsPage } from "./pages/BackendsPage";
+import { AgentWorkPage } from "./pages/AgentWorkPage";
+import { AgentsPage } from "./pages/AgentsPage";
+import { useState } from "react";
 
 function App() {
-  const [viewMode, setViewMode] = useState<ViewMode>("runs");
-  const [selectedRunId, setSelectedRunId] = useState<string | undefined>();
-  const [selectedPlanId, setSelectedPlanId] = useState<string | undefined>();
+  const location = useLocation();
+  const [isCreateRunModalOpen, setIsCreateRunModalOpen] = useState(false);
 
-  const handleRunCreated = (runId: string) => {
-    setSelectedRunId(runId);
-    setViewMode("runs");
-  };
-
-  const handlePlanSelected = (planId: string) => {
-    setSelectedPlanId(planId);
-    setViewMode("plans");
-  };
-
-  const renderContent = () => {
-    if (viewMode === "runs") {
-      if (selectedRunId) {
-        return <RunDetail key={selectedRunId} runId={selectedRunId} />;
-      } else {
-        return (
-          <div className="flex items-center justify-center h-full p-8">
-            <Card className="w-full max-w-md">
-              <CardHeader className="text-center">
-                <div className="text-6xl mb-4">🤖</div>
-                <CardTitle className="text-2xl">Agent Runtime Monitor</CardTitle>
-                <CardDescription>
-                  Select a run from the sidebar to view details
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="text-center text-sm text-muted-foreground">
-                Use the "New Run" button to start a new agent execution
-              </CardContent>
-            </Card>
-          </div>
-        );
-      }
-    } else {
-      if (selectedPlanId) {
-        return <PlanDetail key={selectedPlanId} planId={selectedPlanId} />;
-      } else {
-        return <PlanList onSelectPlan={handlePlanSelected} />;
-      }
-    }
-  };
+  // Extract runId from URL if in runs route
+  const runsMatch = location.pathname.match(/^\/runs\/([^/]+)$/);
+  const selectedRunId = runsMatch ? runsMatch[1] : undefined;
 
   return (
     <Layout
       sidebar={
         <AgentSidebar
           selectedRunId={selectedRunId}
-          onSelectRun={setSelectedRunId}
-          onRunCreated={handleRunCreated}
-          viewMode={viewMode}
-          onViewModeChange={setViewMode}
+          onRunCreated={() => setIsCreateRunModalOpen(false)}
+          isCreateRunModalOpen={isCreateRunModalOpen}
+          onModalClose={() => setIsCreateRunModalOpen(false)}
         />
       }
-      onRunCreated={handleRunCreated}
+      onRunCreated={() => setIsCreateRunModalOpen(false)}
     >
-      {renderContent()}
+      <Routes>
+        <Route path="/" element={<Navigate to="/runs" replace />} />
+        <Route path="/runs" element={<RunsPage />} />
+        <Route path="/runs/:runId" element={<RunsPage />} />
+        <Route path="/plans" element={<PlansPage />} />
+        <Route path="/plans/:planId" element={<PlansPage />} />
+        <Route path="/sandboxes" element={<SandboxesPage />} />
+        <Route path="/sandboxes/:sandboxId" element={<SandboxesPage />} />
+        <Route path="/collectors" element={<CollectorsPage />} />
+        <Route path="/collectors/:collectorId" element={<CollectorsPage />} />
+        <Route path="/backends" element={<BackendsPage />} />
+        <Route path="/backends/:backendId" element={<BackendsPage />} />
+        <Route path="/agent-work" element={<AgentWorkPage />} />
+        <Route path="/agents" element={<AgentsPage />} />
+        <Route path="/agents/:agentId" element={<AgentsPage />} />
+      </Routes>
     </Layout>
   );
 }
